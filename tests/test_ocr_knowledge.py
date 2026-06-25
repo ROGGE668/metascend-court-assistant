@@ -10,7 +10,9 @@ from src.config import Config
 from src.legal.knowledge_base import LocalLegalKnowledgeBase
 
 
-def test_knowledge_base_loads_ocr_image_when_direct_text_unavailable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_knowledge_base_loads_ocr_image_when_direct_text_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     kb_dir = tmp_path / "kb"
     kb_dir.mkdir()
     image_path = kb_dir / "contract.png"
@@ -22,16 +24,22 @@ def test_knowledge_base_loads_ocr_image_when_direct_text_unavailable(tmp_path: P
             return "ocr extracted contract text"
 
     monkeypatch.setattr("src.legal.knowledge_base.LocalOCRReader", FakeOCRReader)
-    monkeypatch.setattr("src.legal.knowledge_base.UnavailableOCRReader", type("FakeUnavailableOCRReader", (), {}))
+    monkeypatch.setattr(
+        "src.legal.knowledge_base.UnavailableOCRReader", type("FakeUnavailableOCRReader", (), {})
+    )
     monkeypatch.setattr(Config, "ENABLE_OCR_FALLBACK", True)
     kb = LocalLegalKnowledgeBase(knowledge_base_dir=kb_dir)
     kb.load()
 
-    docs = [doc["text"] for doc in kb._docs if doc.get("metadata", {}).get("source") == "contract.png"]
+    docs = [
+        doc["text"] for doc in kb._docs if doc.get("metadata", {}).get("source") == "contract.png"
+    ]
     assert docs == ["ocr extracted contract text"]
 
 
-def test_knowledge_base_skips_image_when_ocr_unavailable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_knowledge_base_skips_image_when_ocr_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     kb_dir = tmp_path / "kb"
     kb_dir.mkdir()
     image_path = kb_dir / "contract.png"
@@ -41,7 +49,9 @@ def test_knowledge_base_skips_image_when_ocr_unavailable(tmp_path: Path, monkeyp
         pass
 
     monkeypatch.setattr("src.legal.knowledge_base.UnavailableOCRReader", FakeUnavailableOCRReader)
-    monkeypatch.setattr("src.legal.knowledge_base.LocalOCRReader", lambda: FakeUnavailableOCRReader())
+    monkeypatch.setattr(
+        "src.legal.knowledge_base.LocalOCRReader", lambda: FakeUnavailableOCRReader()
+    )
     monkeypatch.setattr(Config, "ENABLE_OCR_FALLBACK", True)
     kb = LocalLegalKnowledgeBase(knowledge_base_dir=kb_dir)
     kb.load()

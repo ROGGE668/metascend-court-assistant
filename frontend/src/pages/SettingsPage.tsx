@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { invoke } from '@tauri-apps/api/core'
 
 const toggleData = {
   general: [
@@ -27,12 +28,53 @@ function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
 
 export default function SettingsPage({ healthLog }: { healthLog?: string[] }) {
   const [sub, setSub] = useState<'general' | 'audio'>('general')
-  const [toggles, setToggles] = useState<Record<string, boolean>>(() => {
-    const all: Record<string, boolean> = {}
-    Object.values(toggleData).forEach(g => g.forEach(i => { all[i.key] = i.enabled }))
-    return all
-  })
+  const [toggles, setToggles] = useState<Record<string, boolean>>({})
+  const [settings, setSettings] = useState<Record<string, unknown>>({})
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    const defaults: Record<string, boolean> = {}
+    Object.values(toggleData).forEach(g => g.forEach(i => { defaults[i.key] = i.enabled }))
+    setToggles(defaults)
+  }, [])
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const res = await invoke<Record<string, unknown>>('get_settings')
+        const backendToggles = (res.toggles as Record<string, boolean>) || {}
+        setToggles(prev => ({ ...prev, ...backendToggles }))
+        setSettings(res)
+        setError('')
+      } catch (e) {
+        setError('加载设置失败：' + String(e))
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [])
+
   const toggle = (key: string) => setToggles(t => ({ ...t, [key]: !t[key] }))
+
+  const handleSave = async () => {
+    setSaving(true)
+    setSaved(false)
+    setError('')
+    try {
+      const res = await invoke<Record<string, unknown>>('save_settings', { toggles })
+      const backendToggles = (res.toggles as Record<string, boolean>) || {}
+      setToggles(prev => ({ ...prev, ...backendToggles }))
+      setSaved(true)
+    } catch (e) {
+      setError('保存设置失败：' + String(e))
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <div className="max-w-2xl space-y-8">
@@ -51,6 +93,13 @@ export default function SettingsPage({ healthLog }: { healthLog?: string[] }) {
         </button>
       </div>
 
+      {/* 错误提示 */}
+      {error && (
+        <div className="rounded-lg border border-[#fecaca] bg-[#fef2f2] px-4 py-2 text-sm text-[#991b1b]">
+          {error}
+        </div>
+      )}
+
       {/* 开关列表 */}
       <div className="glass-card overflow-hidden">
         {toggleData[sub].map((item, i) => (
@@ -59,14 +108,20 @@ export default function SettingsPage({ healthLog }: { healthLog?: string[] }) {
               <div className="text-sm font-medium text-[#1d1d1f]">{item.label}</div>
               <div className="text-xs text-[#6e6e73] mt-0.5">{item.description}</div>
             </div>
-            <Toggle on={toggles[item.key]} onClick={() => toggle(item.key)} />
+            <Toggle on={!!toggles[item.key]} onClick={() => toggle(item.key)} />
           </div>
         ))}
       </div>
 
       {/* 保存 */}
       <div className="flex justify-end">
-        <button className="btn-pill btn-pill-primary">保存设置</button>
+        <button
+          onClick={handleSave}
+          disabled={saving || loading}
+          className="btn-pill btn-pill-primary disabled:opacity-50"
+        >
+          {saving ? '保存中…' : saved ? '已保存' : '保存设置'}
+        </button>
       </div>
 
       {/* 版本信息 */}
@@ -78,7 +133,9 @@ export default function SettingsPage({ healthLog }: { healthLog?: string[] }) {
           <div className="flex items-center justify-between px-5 py-3">
             <div>
               <div className="text-sm font-medium text-[#1d1d1f]">当前版本</div>
-              <div className="text-xs text-[#6e6e73] mt-0.5">v0.2.0 · 2026-06-25</div>
+              <div className="text-xs text-[#6e6e73] mt-0.5">
+                v0.2.0 · {(settings.asr_model as string) || 'Whisper'} · {(settings.llm_model as string) || '规则引擎'}
+              </div>
             </div>
             <span className="inline-flex items-center gap-1.5 text-xs text-[#22c55e] font-medium">
               <span className="status-dot bg-[#22c55e]" />最新版
@@ -93,7 +150,9 @@ export default function SettingsPage({ healthLog }: { healthLog?: string[] }) {
           <div className="flex items-center justify-between px-5 py-3">
             <div>
               <div className="text-sm font-medium text-[#1d1d1f]">引擎状态</div>
-              <div className="text-xs text-[#6e6e73] mt-0.5">Whisper ASR · ChromaDB · 规则引擎</div>
+              <div className="text-xs text-[#6e6e73] mt-0.5">
+                {(settings.asr_model as string) || 'Whisper ASR'} · {(settings.embedding_model as string) || 'ChromaDB'} · {(settings.llm_model as string) || '规则引擎'}
+              </div>
             </div>
             <span className="inline-flex items-center gap-1.5 text-xs text-[#22c55e] font-medium">
               <span className="status-dot bg-[#22c55e]" />运行中

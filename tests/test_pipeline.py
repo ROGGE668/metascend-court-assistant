@@ -12,7 +12,7 @@ from src.pipeline import CourtAssistantPipeline
 def _collect_updates(pipeline: CourtAssistantPipeline):
     """Replace the UI update method with a recorder."""
     updates = []
-    pipeline._ui.update = lambda msg, status: updates.append((msg, status))
+    pipeline.state.update = lambda msg, status=None: updates.append((msg, status))
     return updates
 
 
@@ -94,7 +94,7 @@ def test_pipeline_with_legal_and_tts():
 
     updates = _collect_updates(pipeline)
     suggestions = []
-    pipeline._ui.update_suggestion = lambda text, laws: suggestions.append((text, laws))
+    pipeline.state.update_suggestion = lambda text, laws: suggestions.append((text, laws))
 
     pipeline._process_speech_segment(np.zeros(16000, dtype=np.float32))
 
@@ -112,7 +112,6 @@ def test_pipeline_chat_send():
         enable_legal=False,
         enable_tts=False,
     )
-    pipeline._ui = MagicMock()
 
     with patch("src.pipeline.LegalAssistant") as mock_cls:
         assistant = MagicMock()
@@ -122,14 +121,13 @@ def test_pipeline_chat_send():
         )
         mock_cls.return_value = assistant
 
-        pipeline._on_chat_send("对方说现金还清了，没有收据")
+        result = pipeline.chat_ask("对方说现金还清了，没有收据")
 
     assistant.suggest.assert_called_once_with("对方说现金还清了，没有收据")
-    pipeline._ui.add_chat_message.assert_called_once()
-    sender, text, ref = pipeline._ui.add_chat_message.call_args[0]
-    assert sender == "AI"
-    assert "说明还款时间" in text
-    assert "《民法典》第679条" in ref
+    assert result["sender"] == "AI"
+    assert "说明还款时间" in result["text"]
+    assert "《民法典》第679条" in result["ref"]
+    assert any(m["sender"] == "AI" for m in pipeline.state.chat_messages)
 
 
 def test_pipeline_chat_send_failure_handled():
@@ -139,16 +137,14 @@ def test_pipeline_chat_send_failure_handled():
         enable_legal=False,
         enable_tts=False,
     )
-    pipeline._ui = MagicMock()
 
     with patch("src.pipeline.LegalAssistant") as mock_cls:
         mock_cls.side_effect = RuntimeError("模型加载失败")
-        pipeline._on_chat_send("问一个法律问题")
+        result = pipeline.chat_ask("问一个法律问题")
 
-    pipeline._ui.add_chat_message.assert_called_once()
-    sender, text, _ref = pipeline._ui.add_chat_message.call_args[0]
-    assert sender == "AI"
-    assert "无法调用法律助手" in text
+    assert result["sender"] == "AI"
+    assert "无法调用法律助手" in result["text"]
+    assert any(m["sender"] == "AI" for m in pipeline.state.chat_messages)
 
 
 def test_pipeline_calibrate_role_success():

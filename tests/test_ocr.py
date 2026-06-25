@@ -1,6 +1,5 @@
 """Tests for the optional local OCR module."""
 
-import os
 from pathlib import Path
 
 import pytest
@@ -30,7 +29,9 @@ def test_local_reader_missing_input_raises_file_not_found(tmp_path: Path):
         reader.extract_text(missing)
 
 
-def test_local_reader_respects_disabled_ocr_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_local_reader_respects_disabled_ocr_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     fake = tmp_path / "scan.pdf"
     fake.write_text("pdf")
     reader = LocalOCRReader()

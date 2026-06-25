@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from src.evidence.store import EvidenceStore
-from src.ocr.engine import LocalOCRReader, UnavailableOCRReader
+from src.ocr.engine import UnavailableOCRReader
 
 
 def test_evidence_list_empty(tmp_path: Path):
@@ -66,7 +66,9 @@ def test_evidence_path(tmp_path: Path):
     assert store.path("x.txt") == (tmp_path / "x.txt").resolve()
 
 
-def test_evidence_ocr_fallback_extracts_image_text(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_evidence_ocr_fallback_extracts_image_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     store = EvidenceStore(base_dir=tmp_path)
     src = tmp_path / "scan.png"
     src.write_bytes(b"image")
@@ -77,13 +79,17 @@ def test_evidence_ocr_fallback_extracts_image_text(tmp_path: Path, monkeypatch: 
             return "ocr text"
 
     monkeypatch.setattr("src.ocr.engine.LocalOCRReader", FakeOCRReader)
-    monkeypatch.setattr("src.ocr.engine.UnavailableOCRReader", type("FakeUnavailableOCRReader", (), {}))
+    monkeypatch.setattr(
+        "src.ocr.engine.UnavailableOCRReader", type("FakeUnavailableOCRReader", (), {})
+    )
     monkeypatch.setattr(store, "import_file", lambda src: src)
     text = store.extract_text(src)
     assert text == "ocr text"
 
 
-def test_evidence_ocr_fallback_returns_empty_when_unavailable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_evidence_ocr_fallback_returns_empty_when_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     store = EvidenceStore(base_dir=tmp_path)
     src = tmp_path / "scan.png"
     src.write_bytes(b"image")
@@ -101,7 +107,7 @@ def test_evidence_txt_does_not_call_ocr(tmp_path: Path, monkeypatch: pytest.Monk
             raise AssertionError("纯文本不应走到 OCR")
 
     monkeypatch.setattr("src.ocr.engine.LocalOCRReader", ExplodingOCRReader)
-    monkeypatch.setattr("src.ocr.engine.UnavailableOCRReader", type("FakeUnavailableOCRReader", (), {}))
+    monkeypatch.setattr(
+        "src.ocr.engine.UnavailableOCRReader", type("FakeUnavailableOCRReader", (), {})
+    )
     assert store.extract_text(src) == "plain text"
-
-

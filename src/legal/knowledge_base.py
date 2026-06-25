@@ -123,7 +123,20 @@ class LocalLegalKnowledgeBase:
     def load(self) -> None:
         """Load documents from disk and build the vector index."""
         self._docs = []
-        supported_suffixes = {".json", ".yaml", ".yml", ".pdf", ".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".gif", ".webp"}
+        supported_suffixes = {
+            ".json",
+            ".yaml",
+            ".yml",
+            ".pdf",
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".tif",
+            ".tiff",
+            ".bmp",
+            ".gif",
+            ".webp",
+        }
         files = sorted(
             path
             for path in self.dir.iterdir()
@@ -162,11 +175,23 @@ class LocalLegalKnowledgeBase:
             elif suffix == ".pdf":
                 text = self._ocr_or_text_extract(file_path)
                 if text:
-                    return [{"type": "imported_pdf", "text": text, "metadata": {"source": file_path.name, "case_type": ""}}]
+                    return [
+                        {
+                            "type": "imported_pdf",
+                            "text": text,
+                            "metadata": {"source": file_path.name, "case_type": ""},
+                        }
+                    ]
             elif suffix in {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".gif", ".webp"}:
                 text = self._ocr_or_text_extract(file_path)
                 if text:
-                    return [{"type": "imported_image", "text": text, "metadata": {"source": file_path.name, "case_type": ""}}]
+                    return [
+                        {
+                            "type": "imported_image",
+                            "text": text,
+                            "metadata": {"source": file_path.name, "case_type": ""},
+                        }
+                    ]
         except Exception as e:
             logger.warning("Failed to parse knowledge file %s: %s", file_path, e)
         return []
@@ -207,6 +232,37 @@ class LocalLegalKnowledgeBase:
         except Exception as e:
             logger.warning("ChromaDB index build failed: %s", e)
             self._collection = None
+
+    # ------------------------------------------------------------------ #
+    # Public query API used by src.api_server
+    # ------------------------------------------------------------------ #
+    def list_documents(self) -> list[dict]:
+        """Return every loaded document with frontend-friendly metadata."""
+        docs = []
+        for i, doc in enumerate(self._docs):
+            law = doc.get("law", "")
+            content = doc.get("content", "")
+            case_type = doc.get("case_type", "")
+            metadata = doc.get("metadata", {})
+            name = law or content[:30] or metadata.get("source", f"文档 {i + 1}")
+            docs.append(
+                {
+                    "id": f"doc_{i}",
+                    "name": name,
+                    "category": case_type or metadata.get("case_type", "其他"),
+                    "status": "已加载",
+                    "chunks": 1,
+                    "date": "-",
+                }
+            )
+        return docs
+
+    def search(self, query: str, category: str | None = None, top_k: int = 5) -> list[dict]:
+        """Vector search over the knowledge base with optional category filter."""
+        results = self.retrieve(query, top_k=top_k)
+        if category and category != "全部":
+            results = [r for r in results if r.get("case_type") == category]
+        return results
 
     def retrieve(self, query: str, top_k: int = 3) -> list[dict]:
         """Return the most relevant documents for a query."""

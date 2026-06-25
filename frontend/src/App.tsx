@@ -29,9 +29,15 @@ export default function App() {
           checks.push('[OK] Tauri IPC 可用')
           try {
             const status = await invoke<string>('local_backend_status')
-            checks.push('[OK] 后端状态: ' + status)
-          } catch {
-            checks.push('[WARN] 后端未响应（仅前端模式）')
+            if (status.startsWith('error:')) {
+              allOk = false
+              checks.push('[ERR] 后端状态: ' + status)
+            } else {
+              checks.push('[OK] 后端状态: ' + status)
+            }
+          } catch (e) {
+            allOk = false
+            checks.push('[ERR] 后端未响应：' + String(e))
           }
         } else {
           checks.push('[WARN] 非 Tauri 环境（浏览器开发模式）')

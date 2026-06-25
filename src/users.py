@@ -133,7 +133,9 @@ class UserStore:
             return None
         return self.get_user(user_id)
 
-    def add_user(self, username: str, display_name: str = "", password: str = "", role: str = "user") -> User:
+    def add_user(
+        self, username: str, display_name: str = "", password: str = "", role: str = "user"
+    ) -> User:
         if not username.strip():
             raise ValueError("用户名不能为空")
         if self.get_user_by_username(username):
@@ -169,7 +171,11 @@ class UserStore:
     def delete_user(self, user_id: str) -> None:
         data = self._read()
         users = data.get("users", [])
-        filtered = [item for item in users if not (isinstance(item, dict) and item.get("user_id") == user_id)]
+        filtered = [
+            item
+            for item in users
+            if not (isinstance(item, dict) and item.get("user_id") == user_id)
+        ]
         if len(filtered) == len(users):
             raise ValueError(f"用户不存在：{user_id}")
         data["users"] = filtered

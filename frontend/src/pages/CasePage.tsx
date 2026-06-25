@@ -1,43 +1,103 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { invoke } from '@tauri-apps/api/core'
+import { open } from '@tauri-apps/plugin-dialog'
 
-type Case = {
-  id: number
-  number: string
-  name: string
-  parties: string
-  type: string
-  date: string
+type CaseItem = {
+  case_id: string
+  title: string
+  case_type: string
+  updated_at: string
 }
 
-const mockCases: Case[] = [
-  { id: 1, number: '(2026) 京01民初123号', name: '张三诉李四民间借贷纠纷', parties: '原告: 张三 / 被告: 李四', type: '民间借贷', date: '2026-06-15' },
-  { id: 2, number: '(2026) 沪02民终456号', name: '王五离婚财产分割上诉案', parties: '上诉人: 王五 / 被上诉人: 赵六', type: '离婚纠纷', date: '2026-06-18' },
-  { id: 3, number: '(2026) 粤03民初789号', name: '某科技公司劳动争议案', parties: '原告: 某科技公司 / 被告: 员工刘某', type: '劳动争议', date: '2026-06-20' },
-]
-
-type Evidence = {
-  id: number
-  caseId: number
+type EvidenceItem = {
   name: string
-  type: string
-  date: string
-  size: string
+  suffix: string
+  size: number
+  modified_at: string
 }
 
-const mockEvidence: Evidence[] = [
-  { id: 1, caseId: 1, name: '借条扫描件.pdf', type: '书证', date: '2026-06-10', size: '2.3 MB' },
-  { id: 2, caseId: 1, name: '银行转账记录.xlsx', type: '书证', date: '2026-06-11', size: '156 KB' },
-  { id: 3, caseId: 1, name: '微信聊天记录截屏.png', type: '电子数据', date: '2026-06-12', size: '4.1 MB' },
-  { id: 4, caseId: 2, name: '结婚证复印件.jpg', type: '书证', date: '2026-06-16', size: '892 KB' },
-  { id: 5, caseId: 2, name: '房产证复印件.pdf', type: '书证', date: '2026-06-16', size: '1.5 MB' },
-  { id: 6, caseId: 3, name: '劳动合同.pdf', type: '书证', date: '2026-06-19', size: '3.2 MB' },
-  { id: 7, caseId: 3, name: '考勤记录.xlsx', type: '电子数据', date: '2026-06-19', size: '234 KB' },
-]
+const typeMap: Record<string, string> = {
+  loan: '民间借贷',
+  divorce: '离婚纠纷',
+  labor: '劳动争议',
+  contract: '合同纠纷',
+  other: '其他',
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
 
 export default function CasePage() {
-  const [selectedCase, setSelectedCase] = useState<Case | null>(mockCases[0])
+  const [cases, setCases] = useState<CaseItem[]>([])
+  const [selectedCase, setSelectedCase] = useState<CaseItem | null>(null)
+  const [evidence, setEvidence] = useState<EvidenceItem[]>([])
+  const [error, setError] = useState('')
 
-  const caseEvidence = mockEvidence.filter(e => e.caseId === selectedCase?.id)
+  const loadCases = async () => {
+    try {
+      const list = await invoke<CaseItem[]>('list_cases')
+      setCases(list)
+      if (list.length > 0 && !selectedCase) {
+        setSelectedCase(list[0])
+      }
+      setError('')
+    } catch (e) {
+      setError('加载案件失败：' + String(e))
+    }
+  }
+
+  const loadEvidence = async () => {
+    try {
+      const list = await invoke<EvidenceItem[]>('list_evidence')
+      setEvidence(list)
+    } catch (e) {
+      setError('加载证据失败：' + String(e))
+    }
+  }
+
+  useEffect(() => {
+    loadCases()
+    loadEvidence()
+  }, [])
+
+  const handleCreateCase = async () => {
+    const title = window.prompt('请输入案件标题')
+    if (!title) return
+    try {
+      await invoke('create_case', { title, case_type: 'other' })
+      await loadCases()
+    } catch (e) {
+      setError('新建案件失败：' + String(e))
+    }
+  }
+
+  const handleImportEvidence = async () => {
+    try {
+      const path = await open({ multiple: false, directory: false })
+      if (!path) return
+      await invoke('import_evidence', { sourcePath: path })
+      await loadEvidence()
+    } catch (e) {
+      setError('导入证据失败：' + String(e))
+    }
+  }
+
+  const handleDeleteEvidence = async (name: string) => {
+    if (!window.confirm('确定删除证据 ' + name + ' 吗？')) return
+    try {
+      await invoke('delete_evidence', { name })
+      await loadEvidence()
+    } catch (e) {
+      setError('删除证据失败：' + String(e))
+    }
+  }
+
+  const caseEvidence = selectedCase
+    ? evidence.filter(e => e.name.toLowerCase().includes(selectedCase.case_id.toLowerCase()))
+    : evidence
 
   return (
     <div className="space-y-5">
@@ -47,27 +107,46 @@ export default function CasePage() {
           <p className="mt-1 text-sm text-[#6e6e73]">统一管理案件、当事人信息与证据文件，全部保存在本地。</p>
         </div>
         <div className="flex gap-2 shrink-0">
-          <button className="rounded-full border border-[#e5e5e7] px-4 py-1.5 text-sm hover:bg-black/5 transition-all hover:border-[#0071e3] hover:text-[#0071e3]">+ 导入证据</button>
-          <button className="rounded-full bg-[#0071e3] px-4 py-1.5 text-sm text-white hover:bg-[#005bbf] transition-all">+ 新建案件</button>
+          <button
+            onClick={handleImportEvidence}
+            className="rounded-full border border-[#e5e5e7] px-4 py-1.5 text-sm hover:bg-black/5 transition-all hover:border-[#0071e3] hover:text-[#0071e3]"
+          >
+            + 导入证据
+          </button>
+          <button
+            onClick={handleCreateCase}
+            className="rounded-full bg-[#0071e3] px-4 py-1.5 text-sm text-white hover:bg-[#005bbf] transition-all"
+          >
+            + 新建案件
+          </button>
         </div>
       </div>
+
+      {error && (
+        <div className="rounded-lg border border-[#fecaca] bg-[#fef2f2] px-4 py-2 text-sm text-[#991b1b]">
+          {error}
+        </div>
+      )}
 
       <div className="grid grid-cols-5 gap-5">
         {/* 案件列表 — 左 2 列 */}
         <section className="col-span-2 rounded-lg border border-[#e5e5e7]">
           <div className="border-b border-[#e5e5e7] px-4 py-3 text-sm font-medium">案件列表</div>
           <div className="divide-y divide-[#f5f5f7]">
-            {mockCases.map(c => (
+            {cases.map(c => (
               <button
-                key={c.id}
+                key={c.case_id}
                 onClick={() => setSelectedCase(c)}
-                className={`w-full px-4 py-3 text-left hover:bg-[#f5f5f7] ${selectedCase?.id === c.id ? 'bg-[#e8f4fd]' : ''}`}
+                className={`w-full px-4 py-3 text-left hover:bg-[#f5f5f7] ${selectedCase?.case_id === c.case_id ? 'bg-[#e8f4fd]' : ''}`}
               >
-                <div className="text-sm font-medium">{c.name}</div>
-                <div className="mt-0.5 text-xs text-[#6e6e73]">{c.number}</div>
-                <div className="mt-0.5 text-xs text-[#6e6e73]">{c.parties}</div>
+                <div className="text-sm font-medium">{c.title}</div>
+                <div className="mt-0.5 text-xs text-[#6e6e73]">{typeMap[c.case_type] || c.case_type}</div>
+                <div className="mt-0.5 text-xs text-[#6e6e73]">{c.case_id}</div>
               </button>
             ))}
+            {cases.length === 0 && (
+              <div className="p-4 text-sm text-[#6e6e73]">暂无案件</div>
+            )}
           </div>
         </section>
 
@@ -79,10 +158,9 @@ export default function CasePage() {
               <div className="rounded-lg border border-[#e5e5e7] p-4">
                 <h2 className="text-sm font-semibold mb-3">案件详情</h2>
                 <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                  <div><span className="text-[#6e6e73]">案号：</span>{selectedCase.number}</div>
-                  <div><span className="text-[#6e6e73]">案由：</span>{selectedCase.type}</div>
-                  <div className="col-span-2"><span className="text-[#6e6e73]">当事人：</span>{selectedCase.parties}</div>
-                  <div className="col-span-2"><span className="text-[#6e6e73]">立案日期：</span>{selectedCase.date}</div>
+                  <div><span className="text-[#6e6e73]">案号：</span>{selectedCase.case_id}</div>
+                  <div><span className="text-[#6e6e73]">案由：</span>{typeMap[selectedCase.case_type] || selectedCase.case_type}</div>
+                  <div className="col-span-2"><span className="text-[#6e6e73]">更新于：</span>{selectedCase.updated_at}</div>
                 </div>
               </div>
 
@@ -90,19 +168,29 @@ export default function CasePage() {
               <div className="rounded-lg border border-[#e5e5e7]">
                 <div className="flex items-center justify-between border-b border-[#e5e5e7] px-4 py-3">
                   <h2 className="text-sm font-semibold">证据文件</h2>
-                  <button className="text-xs text-[#0071e3] hover:underline">+ 添加证据</button>
+                  <button
+                    onClick={handleImportEvidence}
+                    className="text-xs text-[#0071e3] hover:underline"
+                  >
+                    + 添加证据
+                  </button>
                 </div>
                 {caseEvidence.length > 0 ? (
                   <div className="divide-y divide-[#f5f5f7]">
                     {caseEvidence.map(e => (
-                      <div key={e.id} className="flex items-center gap-4 px-4 py-3 hover:bg-[#f5f5f7]">
+                      <div key={e.name} className="flex items-center gap-4 px-4 py-3 hover:bg-[#f5f5f7]">
                         <span className="text-base">📄</span>
                         <div className="min-w-0 flex-1">
                           <div className="text-sm">{e.name}</div>
-                          <div className="text-xs text-[#6e6e73]">{e.type} · {e.size} · {e.date}</div>
+                          <div className="text-xs text-[#6e6e73]">{e.suffix.toUpperCase()} · {formatBytes(e.size)} · {e.modified_at.slice(0, 10)}</div>
                         </div>
                         <button className="rounded-full border border-[#e5e5e7] px-3 py-1 text-xs text-[#6e6e73] hover:bg-black/5 transition-all hover:bg-[#f5f5f7]">查看</button>
-                        <button className="rounded-full border border-[#e5e5e7] px-3 py-1 text-xs text-[#ef4444] hover:bg-red-50 transition-all hover:bg-[#fef2f2]">删除</button>
+                        <button
+                          onClick={() => handleDeleteEvidence(e.name)}
+                          className="rounded-full border border-[#e5e5e7] px-3 py-1 text-xs text-[#ef4444] hover:bg-red-50 transition-all hover:bg-[#fef2f2]"
+                        >
+                          删除
+                        </button>
                       </div>
                     ))}
                   </div>

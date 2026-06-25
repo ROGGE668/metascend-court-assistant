@@ -16,6 +16,7 @@ __all__ = [
     "LegalIntent",
     "Strategy",
     "CaseFile",
+    "Status",
 ]
 
 
@@ -25,6 +26,15 @@ class Role(Enum):
     OPPONENT = "对方"
     WITNESS = "证人"
     UNKNOWN = "未知"
+
+
+class Status(Enum):
+    """Realtime pipeline status exposed to the Tauri frontend."""
+
+    IDLE = "idle"
+    LISTENING = "listening"
+    PROCESSING = "processing"
+    ERROR = "error"
 
 
 @dataclass

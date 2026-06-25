@@ -19,7 +19,6 @@ gracefully so the existing import paths keep working without a hard crash.
 from __future__ import annotations
 
 import logging
-import os
 from pathlib import Path
 from typing import Any
 
@@ -35,7 +34,8 @@ class UnavailableOCRReader:
         raise RuntimeError(
             "本地 OCR 依赖未安装，无法提取扫描件/图片文字。"
             "请在支持安装依赖的环境运行："
-            "`uv pip install --system --python .venv/bin/python paddlepaddle paddleocr pymupdf pdf2image`。"
+            "`uv pip install --system --python .venv/bin/python paddlepaddle paddleocr "
+            "pymupdf pdf2image`。"
         )
 
 
@@ -53,9 +53,7 @@ class LocalOCRReader:
         if not path.exists():
             raise FileNotFoundError(f"OCR input not found: {path}")
         if not Config.ENABLE_OCR_FALLBACK:
-            raise RuntimeError(
-                "当前已禁用 OCR 回退；如需解析扫描件，请先在设置中开启 OCR。"
-            )
+            raise RuntimeError("当前已禁用 OCR 回退；如需解析扫描件，请先在设置中开启 OCR。")
         if not self._available:
             raise RuntimeError(
                 "本地 OCR 依赖不可用，无法解析该文件。"
@@ -80,8 +78,8 @@ class LocalOCRReader:
         return True
 
     def _extract_pdf(self, path: Path) -> str:
-        from pdf2image import convert_from_path
         import fitz
+        from pdf2image import convert_from_path
 
         text = ""
         try:

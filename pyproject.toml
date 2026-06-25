@@ -17,8 +17,9 @@ dependencies = [
     "chromadb>=0.5.0",
     "sentence-transformers>=3.0.0",
     "ollama>=0.4.0",
-    "pywebview>=5.0",
     "cryptography>=42.0.0",
+    "fastapi>=0.138.0",
+    "uvicorn>=0.49.0",
 ]
 
 [project.optional-dependencies]
@@ -31,6 +32,7 @@ dev = [
 
 [project.scripts]
 metascend-mvp = "src.pipeline:main"
+metascend-api = "src.api_server:main"
 download-models = "scripts.download_models:main"
 
 [tool.uv]

@@ -6,8 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from src.config import Config
-from src.users import User, UserStore
+from src.users import UserStore
 
 
 @pytest.fixture()

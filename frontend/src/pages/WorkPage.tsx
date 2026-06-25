@@ -1,15 +1,79 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { invoke } from '@tauri-apps/api/core'
 
-type WorkStatus = { asr: string; diarization: string; legal: string; tts: string }
-const initialStatus: WorkStatus = { asr: '初始化中', diarization: '未启用', legal: '未启用', tts: '未启用' }
+type ServiceStatus = Record<string, string>
 
 export default function WorkPage() {
-  const [status] = useState<WorkStatus>(initialStatus)
   const [running, setRunning] = useState(false)
-  const [transcript] = useState('等待庭审发言…')
-  const [legalHint] = useState('等待对方发言中的法律要点…')
-  const [countermeasure] = useState('暂无应对建议…')
-  const [latency] = useState('')
+  const [transcript, setTranscript] = useState('等待庭审发言…')
+  const [legalHint, setLegalHint] = useState('等待对方发言中的法律要点…')
+  const [countermeasure, setCountermeasure] = useState('暂无应对建议…')
+  const [latency, setLatency] = useState('')
+  const [serviceStatus, setServiceStatus] = useState<ServiceStatus>({})
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    const poll = async () => {
+      try {
+        const status = await invoke<Record<string, unknown>>('get_status')
+        setServiceStatus((status.service_status as ServiceStatus) || {})
+        setLatency(status.latency as string || '')
+        setError('')
+      } catch (e) {
+        setError(String(e))
+      }
+      try {
+        const t = await invoke<Record<string, string>>('get_transcript')
+        if (t.transcript && t.transcript !== transcript && !t.transcript.startsWith('[')) {
+          setTranscript(t.transcript)
+        }
+      } catch {
+        // ignore polling errors
+      }
+      try {
+        const s = await invoke<Record<string, unknown>>('get_suggestion')
+        const text = (s.text as string) || ''
+        const laws = (s.laws as string[]) || []
+        if (text) {
+          setLegalHint(text)
+          setCountermeasure(laws.length > 0 ? '参考：' + laws.join(' · ') : '暂无应对建议…')
+        }
+      } catch {
+        // ignore polling errors
+      }
+    }
+    poll()
+    const id = setInterval(poll, 1500)
+    return () => clearInterval(id)
+  }, [transcript])
+
+  const toggle = async () => {
+    const next = !running
+    try {
+      if (next) {
+        await invoke('start_courtroom')
+      } else {
+        await invoke('stop_courtroom')
+      }
+      setRunning(next)
+      setError('')
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
+  const calibrate = async (role: string) => {
+    try {
+      await invoke('calibrate_role', { role })
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
+  const statusLabel = (key: string) => {
+    const raw = serviceStatus[key] || '未启用'
+    return raw
+  }
 
   return (
     <div className="space-y-5">
@@ -19,19 +83,25 @@ export default function WorkPage() {
           <p className="mt-1.5 text-sm text-[#6e6e73] leading-relaxed">实时语音识别、说话人分离、法律策略提示，全部在本地运行。</p>
         </div>
         <button
-          onClick={() => setRunning(r => !r)}
+          onClick={toggle}
           className="rounded-full bg-[#0071e3] px-5 py-1.5 text-sm text-white hover:bg-[#005bbf] transition-all shrink-0"
         >
           {running ? '⏸ 暂停庭审' : '▶ 开始庭审'}
         </button>
       </div>
 
+      {error && (
+        <div className="rounded-lg border border-[#fecaca] bg-[#fef2f2] px-4 py-2 text-sm text-[#991b1b]">
+          后端连接异常：{error}
+        </div>
+      )}
+
       {/* 服务状态 */}
       <div className="flex gap-2">
-        <ServiceCard title="语音识别 ASR" status={status.asr} />
-        <ServiceCard title="说话人分离" status={status.diarization} />
-        <ServiceCard title="法律策略引擎" status={status.legal} />
-        <ServiceCard title="语音合成 TTS" status={status.tts} />
+        <ServiceCard title="语音识别 ASR" status={statusLabel('语音识别 ASR')} />
+        <ServiceCard title="说话人分离" status={statusLabel('说话人分离')} />
+        <ServiceCard title="法律策略引擎" status={statusLabel('法律策略引擎')} />
+        <ServiceCard title="语音合成 TTS" status={statusLabel('语音合成 TTS')} />
       </div>
 
       {/* 声纹校准 */}
@@ -44,21 +114,16 @@ export default function WorkPage() {
           <span className="text-xs text-[#6e6e73] shrink-0">{latency || '延迟就绪'}</span>
         </div>
         <div className="flex gap-2 mt-2">
-          <CalibrationCard role="法官" />
-          <CalibrationCard role="己方" />
-          <CalibrationCard role="对方" />
+          <CalibrationCard role="法官" onRecord={() => calibrate('法官')} />
+          <CalibrationCard role="己方" onRecord={() => calibrate('己方')} />
+          <CalibrationCard role="对方" onRecord={() => calibrate('对方')} />
         </div>
       </div>
 
       {/* 实时转写 */}
-      <div className="rounded-lg border border-[#e5e5e7] p-5">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold">实时转写</h2>
-          <span className="text-xs text-[#6e6e73]">{running ? '正在监听' : '已暂停'}</span>
-        </div>
-        <div className="min-h-[160px] max-h-[300px] overflow-auto rounded-lg bg-[#f9fafb] p-4 text-sm text-[#1d1d1f]">
-          {transcript}
-        </div>
+      <div className="rounded-lg border border-[#e5e5e7] bg-white p-4">
+        <h3 className="text-sm font-semibold text-[#1d1d1f]">实时转写</h3>
+        <p className="mt-2 text-sm text-[#1d1d1f] whitespace-pre-wrap min-h-[3rem]">{transcript}</p>
       </div>
 
       {/* 法律提示 + 应对建议 */}
@@ -79,7 +144,7 @@ export default function WorkPage() {
 }
 
 function ServiceCard({ title, status }: { title: string; status: string }) {
-  const color = status === '运行中' || status === '就绪' || status === '已加载' ? '#22c55e' : status === '异常' ? '#ef4444' : '#f59e0b'
+  const color = status === '运行中' || status === '就绪' || status === '已加载' || status === '已启用' ? '#22c55e' : status === '异常' ? '#ef4444' : '#f59e0b'
   return (
     <div className="flex flex-1 items-center gap-2 rounded-lg border border-[#e5e5e7] px-3 py-2">
       <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
@@ -91,7 +156,7 @@ function ServiceCard({ title, status }: { title: string; status: string }) {
   )
 }
 
-function CalibrationCard({ role }: { role: string }) {
+function CalibrationCard({ role, onRecord }: { role: string; onRecord: () => void }) {
   return (
     <div className="flex flex-1 items-center gap-2 rounded-lg border border-[#e5e5e7] px-2.5 py-1.5">
       <span className="text-xs">🎙️</span>
@@ -99,7 +164,10 @@ function CalibrationCard({ role }: { role: string }) {
         <div className="text-xs font-medium">{role}</div>
         <div className="text-xs text-[#6e6e73]">未录制</div>
       </div>
-      <button className="ml-auto rounded-full border border-[#e5e5e7] px-3 py-1 text-xs hover:bg-black/5 transition-all">
+      <button
+        onClick={onRecord}
+        className="ml-auto rounded-full border border-[#e5e5e7] px-3 py-1 text-xs hover:bg-black/5 transition-all"
+      >
         录制
       </button>
     </div>

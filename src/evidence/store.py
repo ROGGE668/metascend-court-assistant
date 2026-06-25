@@ -6,9 +6,9 @@ This MVP store keeps files as-is; encryption can be layered later via
 """
 
 import logging
-from pathlib import Path
 import shutil
 from datetime import datetime, timezone
+from pathlib import Path
 
 from src.config import Config
 
@@ -42,7 +42,11 @@ class EvidenceStore:
                     "modified_at": datetime.fromtimestamp(
                         stat.st_mtime, tz=timezone.utc
                     ).isoformat(),
-                    "ocr_status": "disabled" if not Config.ENABLE_OCR_FALLBACK else ("available" if self._ocr_available() else "unavailable"),
+                    "ocr_status": (
+                        "disabled"
+                        if not Config.ENABLE_OCR_FALLBACK
+                        else ("available" if self._ocr_available() else "unavailable")
+                    ),
                     "text_preview": text_preview,
                 }
             )
@@ -123,7 +127,6 @@ class EvidenceStore:
         return ""
 
     def _read_pdf_text(self, path: Path) -> str:
-        from src.ocr.engine import UnavailableOCRReader
 
         try:
             import fitz

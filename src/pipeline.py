@@ -1,15 +1,20 @@
-"""Main orchestration pipeline: audio -> VAD -> [diarization] -> ASR -> UI.
+"""Headless orchestration pipeline: audio -> VAD -> [diarization] -> ASR -> state.
 
-The pywebview UI runs on the main thread and uses the native WebKit engine;
-all heavy work (ASR model loading, audio capture, inference) happens on
-background threads.
+This module no longer depends on pywebview.  It exposes a programmatic
+`CourtAssistantPipeline` that the Tauri frontend drives through the
+FastAPI server in `src.api_server`.
 """
+
+from __future__ import annotations
 
 import logging
 import queue
 import signal
 import sys
 import threading
+import time
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 
 import numpy as np
 
@@ -18,17 +23,76 @@ from src.audio.capture import AudioCapture
 from src.audio.vad import VADBuffer
 from src.case_archive import CaseArchive, CaseFile
 from src.config import Config, configure_logging
-from src.data_types import Role, TranscriptLine
+from src.data_types import Role, Status, TranscriptLine
 from src.diarization.engine import DiarizationEngine
 from src.legal import LegalAssistant
 from src.tts import TTSEngine
-from src.ui.subtitle_window import SubtitleWindow
-from src.ui.types import Status
-from src.ui.webview_window import WebviewWindow
 from src.utils.helpers import MovingAverage, current_time_ms
 from src.utils.recording_store import RecordingStore
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class PipelineState:
+    """In-memory state exposed to the API and frontend.
+
+    This replaces the old pywebview UI callbacks with plain data.
+    """
+
+    message: str = ""
+    status: Status = Status.IDLE
+    service_status: dict[str, str] = field(default_factory=dict)
+    suggestion: str = ""
+    suggestion_laws: list[str] = field(default_factory=list)
+    latency: str = ""
+    chat_messages: list[dict] = field(default_factory=list)
+    is_muted: bool = False
+    running: bool = False
+    courtroom_running: bool = False
+    active_case_id: str | None = None
+    active_case_title: str = ""
+
+    def update(self, message: str, status: Status | None = None) -> None:
+        self.message = message
+        if status is not None:
+            self.status = status
+
+    def set_service_status(self, name: str, state: str) -> None:
+        self.service_status[name] = state
+
+    def update_suggestion(self, text: str, laws: list[str]) -> None:
+        self.suggestion = text
+        self.suggestion_laws = laws
+
+    def set_latency(self, text: str) -> None:
+        self.latency = text
+
+    def set_status(self, status: Status) -> None:
+        self.status = status
+
+    def add_chat_message(self, sender: str, text: str, ref: str) -> None:
+        self.chat_messages.append(
+            {
+                "sender": sender,
+                "text": text,
+                "ref": ref,
+                "time": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+
+    def start(self) -> None:
+        """No-op hook kept for interface parity."""
+
+    def run(self, on_tick=None, tick_ms: int = 200) -> None:
+        """Headless main loop used when running the pipeline standalone."""
+        while True:
+            if on_tick is not None and not on_tick():
+                break
+            time.sleep(tick_ms / 1000)
+
+    def stop(self) -> None:
+        """No-op hook kept for interface parity."""
 
 
 class CourtAssistantPipeline:
@@ -40,6 +104,7 @@ class CourtAssistantPipeline:
         enable_legal: bool | None = None,
         enable_tts: bool | None = None,
         enable_recording: bool | None = None,
+        lazy_init: bool = True,
     ):
         if enable_diarization is None:
             enable_diarization = Config.ENABLE_DIARIZATION
@@ -56,16 +121,10 @@ class CourtAssistantPipeline:
         self._asr = ASREngine()
         self._case_archive = CaseArchive()
         self._active_case: CaseFile | None = None
-        if WebviewWindow.is_available():
-            self._ui = WebviewWindow()
-        else:
-            logger.warning("pywebview not available; falling back to Tkinter UI")
-            self._ui = SubtitleWindow()
+        self._state = PipelineState()
         self._ui_queue: queue.Queue[tuple[str, Status]] = queue.Queue()
         self._capture_thread: threading.Thread | None = None
         self._latency_ma = MovingAverage(window=10)
-
-        self._courtroom_running = False
 
         self._diarization: DiarizationEngine | None = None
         if enable_diarization:
@@ -98,50 +157,74 @@ class CourtAssistantPipeline:
 
         self._chat_legal: LegalAssistant | None = None
 
-    def calibrate_role(self, role: Role, audio) -> bool:
-        """Calibrate a courtroom role using a voice sample."""
-        if self._diarization is None:
-            logger.warning("Diarization is disabled; cannot calibrate role %s", role.value)
-            return False
-        self._diarization.calibrate(role, audio)
-        logger.info("Calibrated role %s", role.value)
-        return True
+        self._ensure_default_case()
+        if not lazy_init:
+            self._initialize_pipeline()
 
-    def toggle_courtroom(self, running: bool) -> None:
+    # ------------------------------------------------------------------ #
+    # Public API for the Tauri frontend
+    # ------------------------------------------------------------------ #
+    @property
+    def state(self) -> PipelineState:
+        return self._state
+
+    def get_status(self) -> dict:
+        """Return a JSON-friendly status snapshot."""
+        return {
+            "message": self._state.message,
+            "status": self._state.status.value,
+            "service_status": self._state.service_status,
+            "latency": self._state.latency,
+            "courtroom_running": self._state.courtroom_running,
+            "active_case": (
+                {"case_id": self._active_case.case_id, "title": self._active_case.title}
+                if self._active_case
+                else None
+            ),
+        }
+
+    def get_transcript(self) -> str:
+        return self._state.message
+
+    def get_suggestion(self) -> dict:
+        return {"text": self._state.suggestion, "laws": self._state.suggestion_laws}
+
+    def get_chat_messages(self) -> list[dict]:
+        return self._state.chat_messages
+
+    def toggle_courtroom(self, running: bool | None = None) -> bool:
         """Start or pause realtime courtroom assistance."""
-        self._courtroom_running = running
+        if running is None:
+            running = not self._state.courtroom_running
+        self._state.courtroom_running = running
         if running:
-            self._ui.set_status(Status.LISTENING)
-            self._ui.update("庭审已开始，请开始说话", Status.LISTENING)
+            self._state.update("庭审已开始，请开始说话", Status.LISTENING)
             logger.info("Courtroom assistance started")
         else:
-            self._ui.set_status(Status.IDLE)
-            self._ui.update("庭审已暂停，点击开始庭审继续", Status.IDLE)
+            self._state.update("庭审已暂停，点击开始庭审继续", Status.IDLE)
             logger.info("Courtroom assistance paused")
+        self._push_service_status()
+        return running
 
-    def _push_service_status(self) -> None:
-        """Reflect current module states in the realtime service cards."""
-        asr_state = "运行中" if self._asr.is_loaded else "初始化中"
-        self._ui.set_service_status("语音识别 ASR", asr_state)
-
-        if self._diarization is not None:
-            self._ui.set_service_status("说话人分离", "已启用")
-        else:
-            self._ui.set_service_status("说话人分离", "未启用")
-
+    def set_active_case(self, case_id: str) -> bool:
+        """Load the selected case and propagate it to the legal assistant."""
+        case = self._case_archive.load(case_id)
+        if case is None:
+            logger.warning("Active case %s not found", case_id)
+            return False
+        self._active_case = case
         if self._legal is not None:
-            has_case = self._active_case is not None
-            self._ui.set_service_status("法律策略引擎", "已加载" if has_case else "等待案件")
-        else:
-            self._ui.set_service_status("法律策略引擎", "未启用")
+            self._legal.set_case(case)
+        if self._chat_legal is not None:
+            self._chat_legal.set_case(case)
+        self._state.active_case_id = case.case_id
+        self._state.active_case_title = case.title
+        logger.info("Active case set: %s (%s)", case.case_id, case.title)
+        self._push_service_status()
+        return True
 
-        if self._tts is not None:
-            self._ui.set_service_status("语音合成 TTS", "就绪")
-        else:
-            self._ui.set_service_status("语音合成 TTS", "未启用")
-
-    def _on_chat_send(self, text: str) -> None:
-        """Handle a Chat-mode legal question using local rule/RAG fallback."""
+    def chat_ask(self, text: str) -> dict:
+        """Answer a legal question using the local assistant."""
         try:
             if self._chat_legal is None:
                 self._chat_legal = LegalAssistant(case=self._active_case)
@@ -154,21 +237,60 @@ class CourtAssistantPipeline:
                 if strategy.referenced_laws
                 else "参考：本地规则模板 / 内置法条"
             )
-            self._ui.add_chat_message("AI", response, ref)
+            self._state.add_chat_message("AI", response, ref)
+            return {"sender": "AI", "text": response, "ref": ref}
         except Exception:
             logger.exception("Chat legal suggestion failed")
-            self._ui.add_chat_message(
-                "AI",
-                "当前无法调用法律助手，请检查本地环境或稍后重试。",
-                "仅供参考，不构成法律意见",
-            )
+            error_text = "当前无法调用法律助手，请检查本地环境或稍后重试。"
+            self._state.add_chat_message("AI", error_text, "仅供参考，不构成法律意见")
+            return {"sender": "AI", "text": error_text, "ref": "仅供参考，不构成法律意见"}
+
+    # ------------------------------------------------------------------ #
+    # Voice calibration
+    # ------------------------------------------------------------------ #
+    def calibrate_role(self, role: Role, audio) -> bool:
+        """Calibrate a courtroom role using a voice sample."""
+        if self._diarization is None:
+            logger.warning("Diarization is disabled; cannot calibrate role %s", role.value)
+            return False
+        try:
+            self._diarization.calibrate(role, audio)
+            logger.info("Calibrated role %s", role.value)
+            return True
+        except Exception:
+            logger.exception("Role calibration failed")
+            return False
+
+    # ------------------------------------------------------------------ #
+    # Internal realtime loop
+    # ------------------------------------------------------------------ #
+    def _push_service_status(self) -> None:
+        """Reflect current module states in the realtime service cards."""
+        asr_state = "运行中" if self._asr.is_loaded else "初始化中"
+        self._state.set_service_status("语音识别 ASR", asr_state)
+
+        if self._diarization is not None:
+            self._state.set_service_status("说话人分离", "已启用")
+        else:
+            self._state.set_service_status("说话人分离", "未启用")
+
+        if self._legal is not None:
+            has_case = self._active_case is not None
+            self._state.set_service_status("法律策略引擎", "已加载" if has_case else "等待案件")
+        else:
+            self._state.set_service_status("法律策略引擎", "未启用")
+
+        if self._tts is not None:
+            self._state.set_service_status("语音合成 TTS", "就绪")
+        else:
+            self._state.set_service_status("语音合成 TTS", "未启用")
 
     def _on_signal(self, _signum, _frame) -> None:
         logger.info("Shutdown signal received")
         self._shutdown_event.set()
 
     def _tick(self) -> bool:
-        """Periodic callback from the UI main loop."""
+        """Periodic callback from the headless main loop."""
         return not self._shutdown_event.is_set()
 
     @staticmethod
@@ -178,8 +300,8 @@ class CourtAssistantPipeline:
         return f"[{label}] {line.text}"
 
     def _process_speech_segment(self, audio: np.ndarray) -> None:
-        """Run ASR (with optional diarization) and update the UI."""
-        self._ui.update("[识别中...]", Status.PROCESSING)
+        """Run ASR (with optional diarization) and update state."""
+        self._state.update("[识别中...]", Status.PROCESSING)
         start_ms = current_time_ms()
         try:
             lines: list[TranscriptLine] = []
@@ -206,29 +328,29 @@ class CourtAssistantPipeline:
             self._latency_ma.add(latency_ms)
 
             if not lines:
-                self._ui.update("[未识别到语音]", Status.LISTENING)
+                self._state.update("[未识别到语音]", Status.LISTENING)
                 return
 
             transcript = "\n".join(self._format_transcript_line(line) for line in lines)
-            self._ui.update(transcript, Status.LISTENING)
+            self._state.update(transcript, Status.LISTENING)
 
             strategy = None
             if self._legal is not None:
                 transcript_text = " ".join(line.text for line in lines if line.text)
-                self._ui.update_suggestion("法律策略分析中...", [])
-                self._ui.set_status(Status.PROCESSING)
+                self._state.update_suggestion("法律策略分析中...", [])
+                self._state.set_status(Status.PROCESSING)
                 strategy = self._legal.suggest(transcript_text)
                 if strategy.text:
-                    self._ui.update_suggestion(strategy.text, strategy.referenced_laws)
+                    self._state.update_suggestion(strategy.text, strategy.referenced_laws)
                 else:
-                    self._ui.update_suggestion("暂无可识别的应对策略", [])
-                self._ui.set_status(Status.LISTENING)
+                    self._state.update_suggestion("暂无可识别的应对策略", [])
+                self._state.set_status(Status.LISTENING)
 
             if (
                 self._tts is not None
                 and strategy is not None
                 and strategy.text
-                and not self._ui.is_muted
+                and not self._state.is_muted
             ):
                 threading.Thread(
                     target=self._tts.speak,
@@ -237,12 +359,12 @@ class CourtAssistantPipeline:
                 ).start()
 
             latency_text = f"识别耗时 {latency_ms}ms，平均 {self._latency_ma.average:.0f}ms"
-            self._ui.set_latency(latency_text)
+            self._state.set_latency(latency_text)
             logger.info("Transcribed: %s (latency=%dms)", latency_text, latency_ms)
         except Exception as e:
             logger.exception("ASR/diarization failed")
-            self._ui.update(f"[识别失败: {e}]", Status.ERROR)
-            self._ui.update_suggestion("语音识别或策略生成失败，请检查本地模型状态", [])
+            self._state.update(f"[识别失败: {e}]", Status.ERROR)
+            self._state.update_suggestion("语音识别或策略生成失败，请检查本地模型状态", [])
 
     def _capture_loop(self) -> None:
         """Continuously capture audio and feed VAD."""
@@ -259,7 +381,7 @@ class CourtAssistantPipeline:
                             self._recording_store.save(speech_segment)
                         except Exception:
                             logger.exception("Failed to save recording")
-                    if not self._courtroom_running:
+                    if not self._state.courtroom_running:
                         continue
                     self._process_speech_segment(speech_segment)
         except Exception:
@@ -271,8 +393,9 @@ class CourtAssistantPipeline:
         """Load ASR model and start audio capture on a background thread."""
         try:
             logger.info("Loading ASR model...")
+            self._state.update("正在加载语音识别模型...", Status.PROCESSING)
             self._asr.load()
-            self._ui.update("模型加载完成，请点击「开始庭审」开始实时辅助", Status.LISTENING)
+            self._state.update("模型加载完成，请点击「开始庭审」开始实时辅助", Status.LISTENING)
             logger.info("ASR model loaded; starting audio capture")
 
             self._audio.start()
@@ -281,78 +404,53 @@ class CourtAssistantPipeline:
             self._push_service_status()
         except Exception:
             logger.exception("Pipeline initialization failed")
-            self._ui.update("初始化失败，请重启应用", Status.ERROR)
-            self._ui.set_service_status("语音识别 ASR", "异常")
+            self._state.update("初始化失败，请重启应用", Status.ERROR)
+            self._state.set_service_status("语音识别 ASR", "异常")
             self._shutdown_event.set()
 
+    # ------------------------------------------------------------------ #
+    # Lifecycle
+    # ------------------------------------------------------------------ #
     def start(self) -> None:
-        """Start the UI on the main thread and background pipeline work."""
+        """Start background pipeline work (non-blocking).
+
+        The old pywebview main loop has been replaced by the headless
+        `_tick` loop in `run()`.  The FastAPI server calls this method
+        during startup and then serves requests on its own thread.
+        """
         signal.signal(signal.SIGINT, self._on_signal)
         signal.signal(signal.SIGTERM, self._on_signal)
 
         logger.info("Starting Metascend Court Assistant MVP")
         print("Starting Metascend Court Assistant MVP", flush=True)
 
-        # Build UI on the main thread; returns immediately.
-        self._ui.start()
-        self._ui.update("正在加载语音识别模型...", Status.PROCESSING)
+        self._state.start()
+        self._state.update("正在加载语音识别模型...", Status.PROCESSING)
 
-        # Wire up Chat-mode legal Q&A.
-        self._ui.on_chat_send = self._on_chat_send
-
-        # Wire up role voice calibration.
-        self._ui.on_calibrate = self.calibrate_role
-
-        # Wire up active case selection from UI.
-        self._ui.on_set_active_case = self._on_set_active_case
-
-        # Wire up courtroom start/pause from the realtime UI.
-        self._ui.on_toggle_courtroom = self.toggle_courtroom
-
-        # Ensure there is at least one case for immediate use.
-        self._ensure_default_case()
-
-        # Heavy initialization runs in the background so the window appears instantly.
         init_thread = threading.Thread(target=self._initialize_pipeline, daemon=True)
         init_thread.start()
+        logger.info("Pipeline initialized in background")
 
-        logger.info("Pipeline running. Press 'q' in subtitle window or Ctrl+C to exit.")
-
-        # Block on the UI main loop.  _tick lets signals shut us down cleanly.
-        self._ui.run(on_tick=self._tick, tick_ms=200)
-
-        # UI closed or shutdown requested; clean up.
+    def run(self) -> None:
+        """Block on the headless main loop until shutdown."""
+        self._state.run(on_tick=self._tick, tick_ms=200)
         self.stop()
 
     def _ensure_default_case(self) -> None:
         """Create a placeholder case if the archive is empty."""
         cases = self._case_archive.list_cases()
         if cases:
-            self._on_set_active_case(cases[0]["case_id"])
+            self.set_active_case(cases[0]["case_id"])
         else:
             case = self._case_archive.create_case("默认案件", "other")
-            self._on_set_active_case(case.case_id)
-
-    def _on_set_active_case(self, case_id: str) -> None:
-        """Load the selected case and propagate it to the legal assistant."""
-        case = self._case_archive.load(case_id)
-        if case is None:
-            logger.warning("Active case %s not found", case_id)
-            return
-        self._active_case = case
-        if self._legal is not None:
-            self._legal.set_case(case)
-        if self._chat_legal is not None:
-            self._chat_legal.set_case(case)
-        logger.info("Active case set: %s (%s)", case.case_id, case.title)
-        self._push_service_status()
+            self.set_active_case(case.case_id)
 
     def stop(self) -> None:
         """Gracefully stop all components."""
         logger.info("Stopping pipeline")
         self._shutdown_event.set()
         self._audio.stop()
-        self._ui.stop()
+        self._state.stop()
         if self._capture_thread is not None and self._capture_thread.is_alive():
             self._capture_thread.join(timeout=2.0)
         self._asr.unload()
@@ -364,8 +462,8 @@ class CourtAssistantPipeline:
 def main() -> int:
     configure_logging()
     print("Starting Metascend Court Assistant MVP", flush=True)
-    pipeline = CourtAssistantPipeline()
-    pipeline.start()
+    pipeline = CourtAssistantPipeline(lazy_init=False)
+    pipeline.run()
     return 0
 
 

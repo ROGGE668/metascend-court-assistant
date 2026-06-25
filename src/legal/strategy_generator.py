@@ -99,7 +99,6 @@ class StrategyGenerator:
 
         strategy = self._rule_strategy(intent)
         rule_text = strategy.text
-        rule_countermeasure = strategy.text
         query = self._build_query(active_case, transcript)
         retrieved = self.kb.retrieve(query, top_k=3) if self.kb else []
         case_clauses: list[dict] = []
