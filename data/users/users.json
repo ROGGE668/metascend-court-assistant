@@ -1,0 +1,14 @@
+{
+  "users": [
+    {
+      "user_id": "USR-347604",
+      "username": "default",
+      "display_name": "默认用户",
+      "role": "admin",
+      "password": "",
+      "created_at": "2026-06-23T04:01:09.704048+00:00",
+      "updated_at": "2026-06-23T04:01:09.704153+00:00"
+    }
+  ],
+  "current_user_id": "USR-347604"
+}

@@ -1,0 +1,786 @@
+ <!DOCTYPE html>
+ <html lang="zh-CN">
+ <head>
+     <meta charset="UTF-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+     <title>Metascend 庭审助手</title>
+     <style>
+         :root {
+             --bg: #f5f5f7;
+             --sidebar: #ffffff;
+             --main: #ffffff;
+             --border: #e5e5e7;
+             --text: #1d1d1f;
+             --text-secondary: #6e6e73;
+             --accent: #0071e3;
+             --accent-light: #e8f4fd;
+             --success: #22c55e;
+             --error: #ef4444;
+             --warning: #f59e0b;
+             --radius: 12px;
+             --radius-sm: 8px;
+         }
+         * { box-sizing: border-box; margin: 0; padding: 0; }
+         body {
+             font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Heiti SC", "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            overflow: hidden;
+        }
+ 
+         /* Top bar */
+         .top-bar {
+             height: 52px;
+             background: var(--sidebar);
+             border-bottom: 1px solid var(--border);
+             display: flex;
+             align-items: center;
+             justify-content: space-between;
+             padding: 0 16px;
+             -webkit-app-region: drag;
+         }
+         .top-left {
+             display: flex;
+             align-items: center;
+             gap: 14px;
+             -webkit-app-region: no-drag;
+         }
+         .traffic-lights {
+             display: flex;
+             gap: 8px;
+         }
+         .light {
+             width: 12px;
+             height: 12px;
+             border-radius: 50%;
+             position: relative;
+             cursor: pointer;
+         }
+         .light.close { background: #ff5f57; }
+         .light.min { background: #febc2e; }
+         .light.max { background: #28c840; }
+         .app-title {
+             font-size: 14px;
+             font-weight: 600;
+             color: var(--text);
+         }
+         .top-right {
+             display: flex;
+             align-items: center;
+             gap: 10px;
+             -webkit-app-region: no-drag;
+         }
+         .status-badge {
+             display: flex;
+             align-items: center;
+             gap: 6px;
+             padding: 5px 12px;
+             border-radius: 999px;
+             background: #f5f5f7;
+             border: 1px solid var(--border);
+             font-size: 13px;
+             color: var(--text-secondary);
+         }
+         .status-dot {
+             width: 8px;
+             height: 8px;
+             border-radius: 50%;
+             background: var(--success);
+             box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+         }
+         .status-badge.error .status-dot { background: var(--error); box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2); }
+         .status-badge.processing .status-dot { background: var(--warning); box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2); }
+ 
+         /* Layout */
+         .app-body {
+             display: flex;
+             height: calc(100vh - 52px);
+         }
+ 
+         /* Sidebar */
+         .sidebar {
+             width: 260px;
+             background: var(--sidebar);
+             border-right: 1px solid var(--border);
+             display: flex;
+             flex-direction: column;
+             padding: 16px 12px;
+         }
+         .mode-tabs {
+             display: flex;
+             gap: 6px;
+             background: #f5f5f7;
+             border-radius: 999px;
+             padding: 4px;
+             margin-bottom: 20px;
+         }
+         .mode-tab {
+             flex: 1;
+             padding: 7px 0;
+             border-radius: 999px;
+             border: none;
+             background: transparent;
+             font-size: 13px;
+             font-weight: 500;
+             color: var(--text-secondary);
+             cursor: pointer;
+             display: flex;
+             align-items: center;
+             justify-content: center;
+             gap: 6px;
+         }
+         .mode-tab.active {
+             background: #ffffff;
+             color: var(--text);
+             box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+         }
+         .sidebar-section { margin-bottom: 18px; }
+         .sidebar-title {
+             font-size: 11px;
+             color: var(--text-secondary);
+             text-transform: uppercase;
+             letter-spacing: 0.5px;
+             margin-bottom: 8px;
+             padding-left: 10px;
+         }
+         .sidebar-item {
+             display: flex;
+             align-items: center;
+             gap: 10px;
+             padding: 8px 10px;
+             border-radius: var(--radius-sm);
+             font-size: 13px;
+             color: var(--text-secondary);
+             cursor: pointer;
+             margin-bottom: 2px;
+         }
+         .sidebar-item:hover { background: #f5f5f7; color: var(--text); }
+         .sidebar-item.active { background: var(--accent-light); color: var(--accent); }
+         .sidebar-icon { font-size: 15px; width: 20px; text-align: center; }
+ 
+         /* Knowledge base */
+         .kb-card {
+             background: #f9fafb;
+             border: 1px solid var(--border);
+             border-radius: var(--radius);
+             padding: 12px;
+             margin-top: auto;
+             margin-bottom: 16px;
+         }
+         .kb-header {
+             display: flex;
+             align-items: center;
+             justify-content: space-between;
+             margin-bottom: 10px;
+         }
+         .kb-title { font-size: 13px; font-weight: 600; }
+         .kb-status {
+             font-size: 11px;
+             color: var(--success);
+             display: flex;
+             align-items: center;
+             gap: 4px;
+         }
+         .kb-list {
+             display: flex;
+             flex-wrap: wrap;
+             gap: 6px;
+             margin-bottom: 10px;
+         }
+         .kb-tag {
+             font-size: 11px;
+             padding: 3px 8px;
+             background: #ffffff;
+             border: 1px solid var(--border);
+             border-radius: 999px;
+             color: var(--text-secondary);
+         }
+         .kb-btn {
+             width: 100%;
+             padding: 7px;
+             border: 1px solid var(--border);
+             background: #ffffff;
+             border-radius: var(--radius-sm);
+             font-size: 12px;
+             color: var(--text);
+             cursor: pointer;
+         }
+         .kb-btn:hover { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }
+ 
+         .user-area {
+             display: flex;
+             align-items: center;
+             gap: 10px;
+             padding: 10px;
+             border-top: 1px solid var(--border);
+         }
+         .avatar {
+             width: 28px;
+             height: 28px;
+             border-radius: 50%;
+             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+             display: flex;
+             align-items: center;
+             justify-content: center;
+             color: white;
+             font-size: 12px;
+             font-weight: 600;
+         }
+         .user-name { font-size: 13px; font-weight: 500; }
+         .user-badge {
+             font-size: 10px;
+             padding: 2px 6px;
+             background: var(--text);
+             color: white;
+             border-radius: 4px;
+         }
+ 
+         /* Main content */
+         .main {
+             flex: 1;
+             background: var(--main);
+             display: flex;
+             flex-direction: column;
+             overflow: hidden;
+         }
+         .content {
+             flex: 1;
+             overflow-y: auto;
+             padding: 32px;
+         }
+         .page-header { margin-bottom: 24px; }
+         .page-header h1 {
+             font-size: 24px;
+             font-weight: 600;
+             margin-bottom: 6px;
+         }
+         .page-header p {
+             font-size: 14px;
+             color: var(--text-secondary);
+         }
+ 
+         /* Work mode */
+         .service-grid {
+             display: grid;
+             grid-template-columns: repeat(4, 1fr);
+             gap: 14px;
+             margin-bottom: 24px;
+         }
+         .service-card {
+             background: #f9fafb;
+             border: 1px solid var(--border);
+             border-radius: var(--radius);
+             padding: 14px;
+         }
+         .service-card h4 {
+             font-size: 13px;
+             color: var(--text-secondary);
+             margin-bottom: 8px;
+         }
+         .service-status {
+             display: flex;
+             align-items: center;
+             gap: 6px;
+             font-size: 14px;
+             font-weight: 500;
+         }
+         .service-dot {
+             width: 8px;
+             height: 8px;
+             border-radius: 50%;
+             background: var(--success);
+         }
+ 
+         .transcript-card {
+             background: #ffffff;
+             border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            margin-bottom: 20px;
+        }
+         .card-header {
+             padding: 14px 16px;
+             border-bottom: 1px solid var(--border);
+             display: flex;
+             align-items: center;
+             justify-content: space-between;
+         }
+         .card-title { font-size: 14px; font-weight: 600; }
+         .card-actions { display: flex; gap: 8px; }
+         .btn-sm {
+             padding: 5px 10px;
+             border: 1px solid var(--border);
+             background: #ffffff;
+             border-radius: var(--radius-sm);
+             font-size: 12px;
+             cursor: pointer;
+         }
+         .btn-sm:hover { background: #f5f5f7; }
+         .btn-sm.primary { background: var(--accent); color: white; border-color: var(--accent); }
+         .btn-sm.primary:hover { background: #005bbf; }
+         .transcript-body {
+            padding: 16px;
+            min-height: 180px;
+            max-height: 300px;
+            overflow-y: auto;
+         }
+         .tx-line {
+             font-size: 15px;
+             margin-bottom: 10px;
+             line-height: 1.5;
+         }
+         .tx-role {
+             font-weight: 600;
+             margin-right: 6px;
+         }
+         .tx-role.judge { color: #7c3aed; }
+         .tx-role.self { color: var(--accent); }
+         .tx-role.opponent { color: #ea580c; }
+ 
+         .suggestion-card {
+             background: #eff6ff;
+             border: 1px solid #bfdbfe;
+             border-radius: var(--radius);
+             padding: 16px;
+         }
+         .suggestion-card h4 {
+             font-size: 13px;
+             color: var(--accent);
+             margin-bottom: 8px;
+         }
+         .suggestion-card p {
+             font-size: 14px;
+             line-height: 1.6;
+            color: #1e3a8a;
+        }
+
+        /* Chat mode */
+         .chat-container {
+             max-width: 800px;
+             margin: 0 auto;
+             height: 100%;
+             display: flex;
+             flex-direction: column;
+         }
+         .chat-messages {
+             flex: 1;
+             overflow-y: auto;
+             padding-bottom: 20px;
+         }
+         .chat-msg {
+             display: flex;
+             gap: 12px;
+             margin-bottom: 20px;
+         }
+         .chat-msg.user { flex-direction: row-reverse; }
+         .chat-avatar {
+             width: 32px;
+             height: 32px;
+             border-radius: 50%;
+             display: flex;
+             align-items: center;
+             justify-content: center;
+             font-size: 13px;
+             flex-shrink: 0;
+         }
+         .chat-avatar.ai { background: var(--accent-light); color: var(--accent); }
+         .chat-avatar.user { background: #e5e7eb; color: #374151; }
+         .chat-bubble {
+             max-width: 70%;
+             padding: 12px 16px;
+             border-radius: var(--radius);
+             font-size: 14px;
+             line-height: 1.6;
+             background: #f3f4f6;
+         }
+         .chat-msg.user .chat-bubble { background: var(--accent); color: white; }
+         .chat-ref {
+             margin-top: 8px;
+             padding-top: 8px;
+             border-top: 1px solid rgba(0,0,0,0.06);
+             font-size: 12px;
+             color: var(--text-secondary);
+         }
+ 
+         .chat-input-wrap {
+             border: 1px solid var(--border);
+             border-radius: var(--radius);
+             background: #ffffff;
+             box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+             padding: 14px;
+         }
+         .chat-input {
+             width: 100%;
+             border: none;
+             outline: none;
+             font-size: 15px;
+             resize: none;
+             min-height: 60px;
+             font-family: inherit;
+         }
+         .chat-input-actions {
+             display: flex;
+             align-items: center;
+             justify-content: space-between;
+             margin-top: 10px;
+         }
+         .chat-tools { display: flex; gap: 8px; }
+         .send-btn {
+             width: 32px;
+             height: 32px;
+             border-radius: 50%;
+             background: var(--accent);
+             color: white;
+             border: none;
+             display: flex;
+             align-items: center;
+             justify-content: center;
+             cursor: pointer;
+         }
+ 
+         .hidden { display: none !important; }
+     </style>
+ </head>
+ <body>
+     <div class="top-bar">
+         <div class="top-left">
+             <div class="traffic-lights">
+                 <div class="light close" title="关闭" onclick="window.app.closeWindow()"></div>
+                 <div class="light min" title="最小化" onclick="window.app.minimizeWindow()"></div>
+                 <div class="light max" title="最大化" onclick="window.app.maximizeWindow()"></div>
+             </div>
+             <div class="app-title">Metascend 庭审助手</div>
+         </div>
+         <div class="top-right">
+             <div class="status-badge" id="topStatus">
+                 <div class="status-dot"></div>
+                 <span>服务正常</span>
+             </div>
+         </div>
+     </div>
+ 
+     <div class="app-body">
+         <aside class="sidebar">
+             <div class="mode-tabs">
+                 <button class="mode-tab active" data-mode="work" onclick="window.app.switchMode('work')">
+                     <span>💼</span> Work
+                 </button>
+                 <button class="mode-tab" data-mode="chat" onclick="window.app.switchMode('chat')">
+                     <span>💬</span> Chat
+                 </button>
+             </div>
+ 
+             <div class="sidebar-section" id="workMenu">
+                 <div class="sidebar-title">庭审工作</div>
+                 <div class="sidebar-item active"><span class="sidebar-icon">⚖️</span>庭审实时辅助</div>
+                 <div class="sidebar-item"><span class="sidebar-icon">🎙️</span>角色声纹校准</div>
+                 <div class="sidebar-item"><span class="sidebar-icon">📁</span>证据管理</div>
+                 <div class="sidebar-item"><span class="sidebar-icon">⚙️</span>设置</div>
+             </div>
+ 
+             <div class="sidebar-section hidden" id="chatMenu">
+                 <div class="sidebar-title">庭后分析</div>
+                 <div class="sidebar-item active"><span class="sidebar-icon">💬</span>智能问答</div>
+                 <div class="sidebar-item"><span class="sidebar-icon">📝</span>历史会话</div>
+                 <div class="sidebar-item"><span class="sidebar-icon">📊</span>策略报告</div>
+             </div>
+ 
+             <div class="kb-card">
+                 <div class="kb-header">
+                     <div class="kb-title">本地向量知识库</div>
+                     <div class="kb-status"><span>●</span>已加载</div>
+                 </div>
+                 <div class="kb-list" id="kb-list">
+                     <span class="kb-tag">民法典</span>
+                     <span class="kb-tag">民诉法</span>
+                     <span class="kb-tag">借贷案例</span>
+                     <span class="kb-tag">离婚案例</span>
+                     <span class="kb-tag">劳动案例</span>
+                 </div>
+                 <button class="kb-btn" onclick="window.app.importKnowledge()">+ 导入法律文档</button>
+             </div>
+ 
+             <div class="user-area">
+                 <div class="avatar">法</div>
+                 <div class="user-name">法律助手</div>
+                 <div class="user-badge">Local</div>
+             </div>
+         </aside>
+ 
+         <main class="main">
+             <!-- Work Mode -->
+             <div class="content" id="workMode">
+                 <div class="page-header">
+                     <h1>庭审实时辅助</h1>
+                     <p>实时语音识别、说话人分离、法律策略提示，全部在本地运行</p>
+                 </div>
+ 
+                 <div class="service-grid">
+                     <div class="service-card" data-service="语音识别 ASR">
+                         <h4>语音识别 ASR</h4>
+                         <div class="service-status"><div class="service-dot"></div><span>运行中</span></div>
+                     </div>
+                     <div class="service-card" data-service="说话人分离">
+                         <h4>说话人分离</h4>
+                         <div class="service-status"><div class="service-dot"></div><span>运行中</span></div>
+                     </div>
+                     <div class="service-card" data-service="法律策略引擎">
+                         <h4>法律策略引擎</h4>
+                         <div class="service-status"><div class="service-dot"></div><span>运行中</span></div>
+                     </div>
+                     <div class="service-card" data-service="语音合成 TTS">
+                         <h4>语音合成 TTS</h4>
+                         <div class="service-status"><div class="service-dot"></div><span>就绪</span></div>
+                     </div>
+                 </div>
+ 
+                 <div class="transcript-card">
+                     <div class="card-header">
+                         <div class="card-title">实时转写</div>
+                         <div class="card-actions">
+                             <button class="btn-sm" id="mute-btn" onclick="window.app.toggleMute()">🔇 静音</button>
+                             <button class="btn-sm primary" id="start-btn" onclick="window.app.toggleCourtroom()">▶ 开始庭审</button>
+                         </div>
+                     </div>
+                     <div class="transcript-body" id="transcript-body">
+                         <div class="tx-line" style="color: var(--text-secondary)">等待庭审发言...</div>
+                     </div>
+                 </div>
+ 
+                <div class="suggestion-card">
+                    <h4>💡 法律提示</h4>
+                    <p id="suggestion-text">等待庭审发言...</p>
+                </div>
+            </div>
+ 
+             <!-- Chat Mode -->
+             <div class="content hidden" id="chatMode">
+                 <div class="chat-container">
+                     <div class="chat-messages" id="chat-messages">
+                         <div class="chat-msg">
+                             <div class="chat-avatar ai">AI</div>
+                             <div class="chat-bubble">
+                                 你好，我是 Metascend 庭审助手。庭审结束后，你可以基于本地知识库问我任何法律分析问题。
+                                 <div class="chat-ref">提示内容仅供参考，不构成法律意见。</div>
+                             </div>
+                         </div>
+                     </div>
+                     <div class="chat-input-wrap">
+                         <textarea class="chat-input" id="chat-input" placeholder="输入问题，基于本地知识库分析..."></textarea>
+                         <div class="chat-input-actions">
+                             <div class="chat-tools">
+                                 <button class="btn-sm">+</button>
+                                 <button class="btn-sm">📎 上传笔录</button>
+                                 <button class="btn-sm">🔍 检索知识库</button>
+                             </div>
+                             <button class="send-btn" onclick="window.app.sendChat()">↑</button>
+                         </div>
+                     </div>
+                 </div>
+             </div>
+         </main>
+     </div>
+ 
+     <script>
+         function api() {
+             return (window.pywebview && window.pywebview.api) ? window.pywebview.api : null;
+         }
+ 
+         window.app = {
+             courtroomRunning: false,
+             muted: false,
+ 
+             switchMode(mode) {
+                 document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+                 document.querySelector(`.mode-tab[data-mode="${mode}"]`).classList.add('active');
+                 if (mode === 'work') {
+                     document.getElementById('workMode').classList.remove('hidden');
+                     document.getElementById('chatMode').classList.add('hidden');
+                     document.getElementById('workMenu').classList.remove('hidden');
+                     document.getElementById('chatMenu').classList.add('hidden');
+                 } else {
+                     document.getElementById('workMode').classList.add('hidden');
+                     document.getElementById('chatMode').classList.remove('hidden');
+                     document.getElementById('workMenu').classList.add('hidden');
+                     document.getElementById('chatMenu').classList.remove('hidden');
+                 }
+             },
+ 
+             closeWindow() { const a = api(); if (a && a.closeWindow) a.closeWindow(); },
+             minimizeWindow() { const a = api(); if (a && a.minimizeWindow) a.minimizeWindow(); },
+             maximizeWindow() { const a = api(); if (a && a.maximizeWindow) a.maximizeWindow(); },
+ 
+             toggleCourtroom() {
+                 this.courtroomRunning = !this.courtroomRunning;
+                 const btn = document.getElementById('start-btn');
+                 btn.textContent = this.courtroomRunning ? '⏸ 暂停庭审' : '▶ 开始庭审';
+                 const a = api();
+                 if (a && a.toggleCourtroom) a.toggleCourtroom(this.courtroomRunning);
+             },
+ 
+             toggleMute() {
+                 this.muted = !this.muted;
+                 const btn = document.getElementById('mute-btn');
+                 btn.textContent = this.muted ? '🔇 已静音' : '🔇 静音';
+                 const a = api();
+                 if (a && a.setMuted) a.setMuted(this.muted);
+             },
+ 
+             sendChat() {
+                 const input = document.getElementById('chat-input');
+                 const text = input.value.trim();
+                 if (!text) return;
+                 this.addChatMessage('user', text);
+                 const a = api();
+                 if (a && a.sendChat) a.sendChat(text);
+                 input.value = '';
+             },
+ 
+             importKnowledge() {
+                 const a = api();
+                 if (a && a.importKnowledge) a.importKnowledge();
+                 else alert('请在应用内使用此功能。');
+             },
+ 
+             // Backend-driven updates
+             setStatus(status) {
+                 const badge = document.getElementById('topStatus');
+                 const dot = badge.querySelector('.status-dot');
+                 const label = badge.querySelector('span');
+                 badge.className = 'status-badge';
+                 dot.style.background = '';
+                 dot.style.boxShadow = '';
+                 if (status === 'error') {
+                     badge.classList.add('error');
+                     label.textContent = '服务异常';
+                 } else if (status === 'processing') {
+                     badge.classList.add('processing');
+                     label.textContent = '处理中';
+                 } else if (status === 'listening') {
+                     dot.style.background = 'var(--success)';
+                     dot.style.boxShadow = '0 0 0 2px rgba(34, 197, 94, 0.2)';
+                     label.textContent = '服务正常';
+                 } else {
+                     dot.style.background = 'var(--warning)';
+                     dot.style.boxShadow = '0 0 0 2px rgba(245, 158, 11, 0.2)';
+                     label.textContent = '就绪';
+                 }
+             },
+ 
+             appendTranscript(text) {
+                 const container = document.getElementById('transcript-body');
+                 if (container.children.length === 1 && container.children[0].style.color) {
+                     container.innerHTML = '';
+                 }
+                 const line = document.createElement('div');
+                 line.className = 'tx-line';
+                 const m = text.match(/^\[([^\]]+)\]/);
+                 if (m) {
+                     const role = m[1];
+                     const roleSpan = document.createElement('span');
+                     roleSpan.className = 'tx-role ' + (role === '法官' ? 'judge' : role === '己方' ? 'self' : role === '对方' ? 'opponent' : '');
+                     roleSpan.textContent = '[' + role + ']';
+                     line.appendChild(roleSpan);
+                     line.appendChild(document.createTextNode(text.slice(m[0].length)));
+                 } else {
+                     line.textContent = text;
+                 }
+                 container.appendChild(line);
+                 container.scrollTop = container.scrollHeight;
+             },
+ 
+            updateSuggestion(text, laws) {
+                const el = document.getElementById('suggestion-text');
+                const refs = laws && laws.length ? '\n参考：' + laws.join(' · ') : '';
+                const disclaimer = '\n\n（提示内容仅供参考，不构成法律意见。用户保留最终决策权。）';
+                el.textContent = text + refs + disclaimer;
+            },
+
+            setLatency(text) {},
+ 
+             setServiceStatus(name, state) {
+                 const cards = document.querySelectorAll('.service-card');
+                 cards.forEach(card => {
+                     const title = card.querySelector('h4').textContent;
+                     if (title === name) {
+                         card.querySelector('.service-status span').textContent = state;
+                         const dot = card.querySelector('.service-dot');
+                         const ok = state === '运行中' || state === '就绪' || state === '已加载';
+                         dot.style.background = ok ? 'var(--success)' : (state === '异常' ? 'var(--error)' : 'var(--warning)');
+                     }
+                 });
+             },
+ 
+             addChatMessage(sender, text, ref) {
+                 const container = document.getElementById('chat-messages');
+                 const row = document.createElement('div');
+                 row.className = 'chat-msg ' + (sender === 'user' ? 'user' : 'ai');
+                 const avatar = document.createElement('div');
+                 avatar.className = 'chat-avatar ' + (sender === 'user' ? 'user' : 'ai');
+                 avatar.textContent = sender === 'user' ? '我' : 'AI';
+                 const bubble = document.createElement('div');
+                 bubble.className = 'chat-bubble';
+                 bubble.textContent = text;
+                 if (ref) {
+                     const refEl = document.createElement('div');
+                     refEl.className = 'chat-ref';
+                     refEl.textContent = ref;
+                     bubble.appendChild(refEl);
+                 }
+                 row.appendChild(avatar);
+                 row.appendChild(bubble);
+                 container.appendChild(row);
+                 container.scrollTop = container.scrollHeight;
+             },
+ 
+             addKnowledgeTag(name) {
+                 const list = document.getElementById('kb-list');
+                 const span = document.createElement('span');
+                 span.className = 'kb-tag';
+                 span.textContent = name;
+                 list.appendChild(span);
+             },
+             refreshKnowledgeTags() {},
+             setEvidenceList(items) {},
+             setCalibrationStatus(role, status) {},
+             alert(msg) { window.alert(msg); }
+         };
+ 
+         // Chat input Enter shortcut
+         document.getElementById('chat-input').addEventListener('keydown', function(e) {
+             if (e.key === 'Enter' && !e.shiftKey) {
+                 e.preventDefault();
+                 window.app.sendChat();
+             }
+         });
+     </script>
+ 
+<script>
+// Demo mock data for browser preview
+(function() {
+  if (window.pywebview) return;
+  const mocks = [
+    () => window.app.setStatus('listening'),
+    () => window.app.appendTranscript('[法官] 原告，请陈述你的诉讼请求。'),
+    () => window.app.appendTranscript('[己方] 请求判令被告偿还借款本金十万元及利息。'),
+    () => window.app.appendTranscript('[对方] 这笔借款我已经通过现金还清了。'),
+    () => window.app.updateSuggestion('对方主张“现金还清”，应要求其说明还款时间、地点、在场人及资金来源；现金还款无收据或转账记录，举证责任在被告。', ['民法典第679条', '民诉法解释第91条']),
+    () => window.app.setServiceStatus('语音合成 TTS', '运行中'),
+  ];
+  window.addEventListener('DOMContentLoaded', () => {
+    window.app.switchMode('work');
+    mocks.forEach((fn, i) => setTimeout(fn, 500 + i * 800));
+    setTimeout(() => {
+      window.app.switchMode('chat');
+      window.app.addChatMessage('user', '对方说现金还清了，但没有收据，我该怎么反驳？');
+      setTimeout(() => {
+        window.app.addChatMessage('ai', '你可以从以下三点反驳：\n1. 要求对方说明还款的具体时间、地点、金额、在场人；\n2. 大额现金还款不符合日常交易习惯，应提供取款记录或资金来源；\n3. 主张还款事实成立的举证责任在被告，被告证据不足应承担不利后果。', '参考：民法典第679条 · 民诉法解释第91条 · 本地知识库：借贷案例库');
+      }, 800);
+    }, mocks.length * 800 + 1500);
+  });
+})();
+</script>
+
+</body>
+ </html>

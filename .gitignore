@@ -1,0 +1,38 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+.ocrdeps
+.ocr_venv
+.pytest_cache
+.ruff_cache
+.cache
+build/
+dist/
+*.log
+*.command
+**/.DS_Store
+
+# Tauri frontend
+frontend/node_modules
+frontend/dist
+
+# Rust/Tauri build artifacts
+frontend/src-tauri/target/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp
+tmp/

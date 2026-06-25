@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metascend 庭审助手 - UI 原型</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #1e293b;
+            --border: #334155;
+            --text: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent: #3b82f6;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --suggestion-bg: #172554;
+            --suggestion-border: #2563eb;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Heiti SC", "Segoe UI", Roboto, sans-serif;
+            background: radial-gradient(circle at 20% 30%, #1e293b 0%, #0f172a 60%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text);
+            overflow: hidden;
+        }
+
+        .workspace-hint {
+            position: fixed;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: var(--text-muted);
+            font-size: 13px;
+            opacity: 0.7;
+            pointer-events: none;
+        }
+
+        /* Floating subtitle window */
+        .subtitle-window {
+            position: fixed;
+            top: 120px;
+            left: 120px;
+            width: 980px;
+            max-width: 90vw;
+            min-width: 600px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            box-shadow: 0 25px 80px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04);
+            overflow: hidden;
+            resize: both;
+            user-select: none;
+        }
+
+        .title-bar {
+            height: 44px;
+            display: flex;
+            align-items: center;
+            padding: 0 14px 0 18px;
+            background: var(--bg);
+            cursor: grab;
+            border-bottom: 1px solid rgba(51, 65, 85, 0.5);
+        }
+
+        .title-bar:active {
+            cursor: grabbing;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-right: 18px;
+        }
+
+        .status-dot {
+            font-size: 13px;
+            line-height: 1;
+        }
+
+        .status-dot.pulse {
+            animation: pulse 1.4s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.35; }
+        }
+
+        .status-text {
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .title {
+            flex: 1;
+            font-size: 14px;
+            color: var(--text-muted);
+            font-weight: 400;
+        }
+
+        .window-controls {
+            display: flex;
+            gap: 4px;
+        }
+
+        .win-btn {
+            width: 34px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            color: var(--text-muted);
+            font-size: 15px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .win-btn:hover {
+            background: var(--border);
+            color: var(--text);
+        }
+
+        .win-btn.close:hover {
+            background: var(--error);
+        }
+
+        .win-btn.muted {
+            color: var(--error);
+        }
+
+        /* Transcript area */
+        .transcript-wrap {
+            margin: 12px 14px 10px;
+            background: var(--card);
+            border-radius: 10px;
+            min-height: 140px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .transcript-header {
+            padding: 8px 14px 0;
+            font-size: 11px;
+            color: var(--text-muted);
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        .transcript {
+            flex: 1;
+            padding: 12px 14px;
+            font-size: 17px;
+            line-height: 1.65;
+            overflow-y: auto;
+            max-height: 220px;
+            color: var(--text);
+        }
+
+        .transcript .placeholder {
+            color: #475569;
+            font-style: italic;
+        }
+
+        .line {
+            margin-bottom: 6px;
+            opacity: 0;
+            transform: translateY(6px);
+            animation: fadeIn 0.25s ease forwards;
+        }
+
+        @keyframes fadeIn {
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .role {
+            color: var(--accent);
+            font-weight: 600;
+            margin-right: 4px;
+        }
+
+        /* Suggestion card */
+        .suggestion {
+            margin: 0 14px 10px;
+            background: var(--suggestion-bg);
+            border: 1px solid var(--suggestion-border);
+            border-radius: 10px;
+            padding: 12px 14px;
+        }
+
+        .suggestion-header {
+            font-size: 11px;
+            color: #60a5fa;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+
+        .suggestion-body {
+            font-size: 14px;
+            line-height: 1.55;
+            color: #dbeafe;
+        }
+
+        .suggestion-laws {
+            margin-top: 6px;
+            font-size: 12px;
+            color: #93c5fd;
+        }
+
+        .suggestion-muted {
+            opacity: 0.55;
+        }
+
+        /* Footer */
+        .footer {
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 18px;
+            font-size: 12px;
+            color: #475569;
+        }
+
+        .latency {
+            color: var(--text-muted);
+            font-family: "SF Mono", Menlo, monospace;
+        }
+
+        /* Demo controls */
+        .demo-controls {
+            position: fixed;
+            top: 24px;
+            right: 24px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px;
+            min-width: 220px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+        }
+
+        .demo-controls h3 {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+            font-weight: 500;
+        }
+
+        .demo-btn {
+            width: 100%;
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            border: none;
+            border-radius: 6px;
+            background: var(--accent);
+            color: white;
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .demo-btn:hover {
+            background: #2563eb;
+        }
+
+        .demo-btn.secondary {
+            background: var(--border);
+            color: var(--text);
+        }
+
+        .demo-btn.secondary:hover {
+            background: #475569;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .minimized-badge {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 14px;
+            color: var(--text-muted);
+            font-size: 13px;
+            cursor: pointer;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <div class="workspace-hint">拖拽窗口标题栏移动 · 按 M 静音 · 按 Q 退出 · 右侧控制面板可播放演示</div>
+
+    <div class="subtitle-window" id="subtitleWindow">
+        <div class="title-bar" id="titleBar">
+            <div class="status">
+                <span class="status-dot pulse" id="statusDot" style="color: var(--warning);">●</span>
+                <span class="status-text" id="statusText">待机</span>
+            </div>
+            <div class="title">Metascend 庭审助手</div>
+            <div class="window-controls">
+                <div class="win-btn" id="muteBtn" title="静音 / 恢复 (M)">🔇 静音</div>
+                <div class="win-btn" id="minBtn" title="最小化">—</div>
+                <div class="win-btn close" id="closeBtn" title="退出 (Q)">×</div>
+            </div>
+        </div>
+
+        <div class="transcript-wrap">
+            <div class="transcript-header">实时转写</div>
+            <div class="transcript" id="transcript">
+                <span class="placeholder">等待发言...</span>
+            </div>
+        </div>
+
+        <div class="suggestion" id="suggestionCard">
+            <div class="suggestion-header">法律提示</div>
+            <div class="suggestion-body" id="suggestionBody">等待庭审发言...</div>
+            <div class="suggestion-laws" id="suggestionLaws"></div>
+        </div>
+
+        <div class="footer">
+            <span class="latency" id="latency"></span>
+            <span>仅供参考，不构成法律意见 · 按 M 静音 · Q 退出</span>
+        </div>
+    </div>
+
+    <div class="demo-controls" id="demoControls">
+        <h3>演示控制台</h3>
+        <button class="demo-btn" id="startDemo">▶ 播放庭审演示</button>
+        <button class="demo-btn secondary" id="pauseDemo">⏸ 暂停</button>
+        <button class="demo-btn secondary" id="resetDemo">↺ 重置</button>
+    </div>
+
+    <div class="minimized-badge hidden" id="minimizedBadge">Metascend 庭审助手 · 点击恢复</div>
+
+    <script>
+        // --- Demo data ---
+        const demoScript = [
+            { role: '法官', text: '原告，请陈述你的诉讼请求。', status: 'listening', latency: 210 },
+            { role: '己方', text: '请求判令被告偿还借款本金十万元及利息。', status: 'listening', latency: 320 },
+            { role: '对方', text: '这笔借款我已经通过现金还清了。', status: 'listening', latency: 280 },
+            { role: '法官', text: '原告，被告主张已现金还款，你有什么证据？', status: 'listening', latency: 260 },
+            { role: '己方', text: '被告没有出具收据，我这里有银行转账记录和借条原件。', status: 'listening', latency: 340 },
+            { role: '对方', text: '借条是胁迫我签的，当时还有第三人在场。', status: 'listening', latency: 300 },
+            { role: '法官', text: '被告，你主张胁迫，有无报警记录或证人？', status: 'listening', latency: 250 },
+            { role: '对方', text: '……没有报警，但我可以找朋友作证。', status: 'listening', latency: 290 },
+        ];
+
+        const suggestions = {
+            '现金还清': { text: '要求被告说明还款时间、地点、金额细节，并主张举证责任在被告。', laws: ['《民诉法解释》第91条'] },
+            '胁迫': { text: '胁迫主张需被告承担举证责任；无报警记录和证人出庭，可质疑其可信度。', laws: ['《民法典》第150条', '《民诉法解释》第109条'] },
+            '借条原件': { text: '借条原件与转账记录相互印证，可主张债权关系成立。', laws: ['《民法典》第679条'] },
+            '默认': { text: '注意对方陈述中的事实矛盾，适时要求法庭记录在案。', laws: [] }
+        };
+
+        // --- State ---
+        let isMuted = false;
+        let isMinimized = false;
+        let demoIndex = 0;
+        let demoTimer = null;
+        let isRunning = false;
+
+        // --- DOM refs ---
+        const windowEl = document.getElementById('subtitleWindow');
+        const titleBar = document.getElementById('titleBar');
+        const transcriptEl = document.getElementById('transcript');
+        const suggestionBody = document.getElementById('suggestionBody');
+        const suggestionLaws = document.getElementById('suggestionLaws');
+        const suggestionCard = document.getElementById('suggestionCard');
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const latencyEl = document.getElementById('latency');
+        const muteBtn = document.getElementById('muteBtn');
+        const minBtn = document.getElementById('minBtn');
+        const closeBtn = document.getElementById('closeBtn');
+        const minimizedBadge = document.getElementById('minimizedBadge');
+        const startBtn = document.getElementById('startDemo');
+        const pauseBtn = document.getElementById('pauseDemo');
+        const resetBtn = document.getElementById('resetDemo');
+
+        // --- Drag logic ---
+        let isDragging = false;
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+
+        titleBar.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            const rect = windowEl.getBoundingClientRect();
+            dragOffsetX = e.clientX - rect.left;
+            dragOffsetY = e.clientY - rect.top;
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            windowEl.style.left = (e.clientX - dragOffsetX) + 'px';
+            windowEl.style.top = (e.clientY - dragOffsetY) + 'px';
+        });
+
+        document.addEventListener('mouseup', () => isDragging = false);
+
+        // --- Status ---
+        function setStatus(state) {
+            const colors = {
+                idle: 'var(--warning)',
+                listening: 'var(--success)',
+                processing: 'var(--warning)',
+                error: 'var(--error)'
+            };
+            const labels = {
+                idle: '待机',
+                listening: '监听中',
+                processing: '处理中',
+                error: '错误'
+            };
+            statusDot.style.color = colors[state] || colors.idle;
+            statusText.textContent = labels[state] || '待机';
+            statusDot.classList.add('pulse');
+        }
+
+        // --- Controls ---
+        function toggleMute() {
+            isMuted = !isMuted;
+            muteBtn.classList.toggle('muted', isMuted);
+            muteBtn.textContent = isMuted ? '🔇 已静音' : '🔇 静音';
+            renderSuggestion(lastSuggestion);
+        }
+
+        function toggleMinimize() {
+            isMinimized = !isMinimized;
+            windowEl.classList.toggle('hidden', isMinimized);
+            minimizedBadge.classList.toggle('hidden', !isMinimized);
+        }
+
+        function closeApp() {
+            if (confirm('退出 Metascend 庭审助手？')) {
+                window.location.reload();
+            }
+        }
+
+        muteBtn.addEventListener('click', toggleMute);
+        minBtn.addEventListener('click', toggleMinimize);
+        closeBtn.addEventListener('click', closeApp);
+        minimizedBadge.addEventListener('click', toggleMinimize);
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key.toLowerCase() === 'm') toggleMute();
+            if (e.key.toLowerCase() === 'q' || e.key === 'Escape') closeApp();
+        });
+
+        // --- Transcript & suggestion ---
+        let lastSuggestion = null;
+
+        function addLine(role, text) {
+            const placeholder = transcriptEl.querySelector('.placeholder');
+            if (placeholder) placeholder.remove();
+
+            const line = document.createElement('div');
+            line.className = 'line';
+            line.innerHTML = `<span class="role">[${role}]</span>${text}`;
+            transcriptEl.appendChild(line);
+            transcriptEl.scrollTop = transcriptEl.scrollHeight;
+        }
+
+        function renderSuggestion(suggestion) {
+            if (!suggestion) return;
+            suggestionBody.textContent = suggestion.text;
+            suggestionLaws.textContent = suggestion.laws.length ? `（依据：${suggestion.laws.join('、')}）` : '';
+            suggestionCard.classList.toggle('suggestion-muted', isMuted);
+            if (isMuted) {
+                suggestionBody.textContent = '[已静音] ' + suggestion.text;
+            }
+        }
+
+        function pickSuggestion(text) {
+            for (const key of Object.keys(suggestions)) {
+                if (text.includes(key)) return suggestions[key];
+            }
+            return suggestions['默认'];
+        }
+
+        // --- Demo playback ---
+        function playNext() {
+            if (demoIndex >= demoScript.length) {
+                setStatus('listening');
+                latencyEl.textContent = '';
+                isRunning = false;
+                startBtn.textContent = '▶ 重新播放';
+                return;
+            }
+
+            const item = demoScript[demoIndex++];
+            setStatus('processing');
+            latencyEl.textContent = `识别耗时 ${item.latency}ms`;
+
+            setTimeout(() => {
+                addLine(item.role, item.text);
+                setStatus(item.status);
+                lastSuggestion = pickSuggestion(item.text);
+                renderSuggestion(lastSuggestion);
+                demoTimer = setTimeout(playNext, 2200);
+            }, item.latency);
+        }
+
+        function startDemo() {
+            if (isRunning) return;
+            isRunning = true;
+            startBtn.textContent = '▶ 播放中...';
+            playNext();
+        }
+
+        function pauseDemo() {
+            clearTimeout(demoTimer);
+            isRunning = false;
+            startBtn.textContent = '▶ 继续播放';
+        }
+
+        function resetDemo() {
+            clearTimeout(demoTimer);
+            isRunning = false;
+            demoIndex = 0;
+            transcriptEl.innerHTML = '<span class="placeholder">等待发言...</span>';
+            lastSuggestion = null;
+            suggestionBody.textContent = '等待庭审发言...';
+            suggestionLaws.textContent = '';
+            latencyEl.textContent = '';
+            setStatus('idle');
+            startBtn.textContent = '▶ 播放庭审演示';
+        }
+
+        startBtn.addEventListener('click', startDemo);
+        pauseBtn.addEventListener('click', pauseDemo);
+        resetBtn.addEventListener('click', resetDemo);
+
+        setStatus('idle');
+    </script>
+</body>
+</html>

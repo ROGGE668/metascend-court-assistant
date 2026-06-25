@@ -1,0 +1,1416 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metascend 庭审助手</title>
+    <style>
+        :root {
+            --bg: #f5f5f7;
+            --sidebar: #ffffff;
+            --main: #ffffff;
+            --border: #e5e5e7;
+            --text: #1d1d1f;
+            --text-secondary: #6e6e73;
+            --accent: #0071e3;
+            --accent-light: #e8f4fd;
+            --success: #22c55e;
+            --error: #ef4444;
+            --warning: #f59e0b;
+            --radius: 12px;
+            --radius-sm: 8px;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Heiti SC", "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .top-bar {
+            height: 52px;
+            background: var(--sidebar);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            -webkit-app-region: drag;
+        }
+        .top-left {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            -webkit-app-region: no-drag;
+        }
+        .traffic-lights { display: flex; gap: 8px; }
+        .light {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            cursor: pointer;
+            position: relative;
+        }
+        .light.close { background: #ff5f57; }
+        .light.min { background: #febc2e; }
+        .light.max { background: #28c840; }
+        .app-title { font-size: 14px; font-weight: 600; color: var(--text); }
+        .top-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            -webkit-app-region: no-drag;
+        }
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 12px;
+            border-radius: 999px;
+            background: #f5f5f7;
+            border: 1px solid var(--border);
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+            box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+        }
+        .status-badge.error .status-dot { background: var(--error); box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2); }
+        .status-badge.processing .status-dot { background: var(--warning); box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2); }
+
+        .app-body { display: flex; height: calc(100vh - 52px); }
+        .sidebar {
+            width: 260px;
+            background: var(--sidebar);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            padding: 16px 12px;
+        }
+        .mode-tabs {
+            display: flex;
+            gap: 6px;
+            background: #f5f5f7;
+            border-radius: 999px;
+            padding: 4px;
+            margin-bottom: 20px;
+        }
+        .mode-tab {
+            flex: 1;
+            padding: 7px 0;
+            border-radius: 999px;
+            border: none;
+            background: transparent;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .mode-tab.active {
+            background: #ffffff;
+            color: var(--text);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+        .sidebar-section { margin-bottom: 18px; }
+        .sidebar-title {
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            padding-left: 10px;
+        }
+        .sidebar-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            margin-bottom: 2px;
+            user-select: none;
+        }
+        .sidebar-item:hover { background: #f5f5f7; color: var(--text); }
+        .sidebar-item.active { background: var(--accent-light); color: var(--accent); }
+        .sidebar-icon { font-size: 15px; width: 20px; text-align: center; }
+
+        .kb-card {
+            background: #f9fafb;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 12px;
+            margin-top: auto;
+            margin-bottom: 16px;
+        }
+        .kb-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+        .kb-title { font-size: 13px; font-weight: 600; }
+        .kb-status { font-size: 11px; color: var(--success); display: flex; align-items: center; gap: 4px; }
+        .kb-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+        .kb-tag {
+            font-size: 11px;
+            padding: 3px 8px;
+            background: #ffffff;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            color: var(--text-secondary);
+        }
+        .kb-btn {
+            width: 100%;
+            padding: 7px;
+            border: 1px solid var(--border);
+            background: #ffffff;
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            color: var(--text);
+            cursor: pointer;
+        }
+        .kb-btn:hover { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }
+
+        .user-area {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            border-top: 1px solid var(--border);
+            cursor: pointer;
+            user-select: none;
+        }
+        .user-area:hover { background: #f5f5f7; }
+        .avatar {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .user-meta { flex: 1; min-width: 0; }
+        .user-name { font-size: 13px; font-weight: 500; }
+        .user-badge {
+            font-size: 10px;
+            padding: 2px 6px;
+            background: var(--text);
+            color: white;
+            border-radius: 4px;
+        }
+        .user-menu {
+            position: absolute;
+            left: 10px;
+            right: 10px;
+            bottom: calc(100% + 8px);
+            background: #ffffff;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            box-shadow: 0 20px 50px rgba(0,0,0,0.15);
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+            z-index: 90;
+        }
+        .user-menu.active { display: flex; }
+        .user-menu-item {
+            padding: 9px 12px;
+            font-size: 13px;
+            color: var(--text);
+            cursor: pointer;
+            background: transparent;
+            border: none;
+            width: 100%;
+            text-align: left;
+        }
+        .user-menu-item:hover { background: #f5f5f7; }
+        .user-menu-item.danger { color: var(--error); }
+        .user-menu-sep { height: 1px; background: var(--border); }
+
+        .main { flex: 1; background: var(--main); display: flex; flex-direction: column; overflow: hidden; }
+        .content { flex: 1; overflow-y: auto; padding: 32px; }
+        .page { display: none; }
+        .page.active { display: block; }
+        .page-header { margin-bottom: 24px; }
+        .page-header-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+        }
+        .page-header h1 { font-size: 24px; font-weight: 600; margin-bottom: 6px; }
+        .page-header p { font-size: 14px; color: var(--text-secondary); }
+        .page-header-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+        .service-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 24px; }
+        .service-card { background: #f9fafb; border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
+        .service-card h4 { font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; }
+        .service-status { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 500; }
+        .service-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); }
+
+        .service-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 24px; }
+        .service-card { background: #f9fafb; border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
+        .service-card h4 { font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; }
+        .service-status { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 500; }
+        .service-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); }
+
+        .transcript-card {
+            background: #ffffff;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            margin-bottom: 20px;
+        }
+        .card-header { padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+        .card-title { font-size: 14px; font-weight: 600; }
+        .card-actions { display: flex; gap: 8px; }
+        .btn-sm {
+            padding: 5px 10px;
+            border: 1px solid var(--border);
+            background: #ffffff;
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .btn-sm:hover { background: #f5f5f7; }
+        .btn-sm.primary { background: var(--accent); color: white; border-color: var(--accent); }
+        .btn-sm.primary:hover { background: #005bbf; }
+        .btn-sm.danger { color: var(--error); border-color: var(--error); }
+        .transcript-body { padding: 16px; min-height: 180px; max-height: 300px; overflow-y: auto; }
+        .tx-line { font-size: 15px; margin-bottom: 10px; line-height: 1.5; }
+        .tx-role { font-weight: 600; margin-right: 6px; }
+        .tx-role.judge { color: #7c3aed; }
+        .tx-role.self { color: var(--accent); }
+        .tx-role.opponent { color: #ea580c; }
+        .tx-role.witness { color: #059669; }
+
+       .suggestion-card { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: var(--radius); padding: 16px; }
+       .suggestion-card h4 { font-size: 13px; color: var(--accent); margin-bottom: 8px; }
+       .suggestion-card p { font-size: 14px; line-height: 1.6; color: #1e3a8a; white-space: pre-wrap; }
+        .countermeasure-card { background: #f0fdf4; border: 1px solid #bbf7d0; }
+        .countermeasure-card h4 { color: #15803d; }
+        .countermeasure-card p { color: #14532d; }
+
+        .chat-container { max-width: 800px; margin: 0 auto; height: 100%; display: flex; flex-direction: column; }
+        .chat-messages { flex: 1; overflow-y: auto; padding-bottom: 20px; }
+        .chat-msg { display: flex; gap: 12px; margin-bottom: 20px; }
+        .chat-msg.user { flex-direction: row-reverse; }
+        .chat-avatar {
+            width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            font-size: 13px; flex-shrink: 0;
+        }
+        .chat-avatar.ai { background: var(--accent-light); color: var(--accent); }
+        .chat-avatar.user { background: #e5e7eb; color: #374151; }
+        .chat-bubble { max-width: 70%; padding: 12px 16px; border-radius: var(--radius); font-size: 14px; line-height: 1.6; background: #f3f4f6; }
+        .chat-msg.user .chat-bubble { background: var(--accent); color: white; }
+        .chat-ref { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(0,0,0,0.06); font-size: 12px; color: var(--text-secondary); }
+        .chat-input-wrap { border: 1px solid var(--border); border-radius: var(--radius); background: #ffffff; box-shadow: 0 4px 20px rgba(0,0,0,0.06); padding: 14px; }
+        .chat-input { width: 100%; border: none; outline: none; font-size: 15px; resize: none; min-height: 60px; font-family: inherit; }
+        .chat-input-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
+        .chat-tools { display: flex; gap: 8px; }
+        .send-btn { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: white; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+
+        .card { background: #ffffff; border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+        .card h3 { font-size: 15px; margin-bottom: 12px; font-weight: 600; }
+        .form-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; }
+        .form-row input[type=text], .form-row input[type=number], .form-row select, .form-row textarea {
+            flex: 1; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; font-family: inherit;
+        }
+        .form-row textarea { min-height: 80px; }
+        .toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); }
+        .toggle-row:last-child { border-bottom: none; }
+        .toggle { width: 40px; height: 24px; border-radius: 999px; background: #d1d5db; position: relative; cursor: pointer; transition: background 0.2s; }
+        .toggle.on { background: var(--accent); }
+        .toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: white; transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+        .toggle.on::after { transform: translateX(16px); }
+        .cal-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+        .cal-card { background: #f9fafb; border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; text-align: center; }
+        .cal-card h4 { margin-bottom: 8px; }
+        .cal-status { font-size: 12px; color: var(--text-secondary); margin-bottom: 12px; }
+        .evidence-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+        .evidence-card { background: #f9fafb; border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
+        .evidence-card h4 { font-size: 13px; margin-bottom: 6px; word-break: break-all; }
+        .evidence-meta { font-size: 11px; color: var(--text-secondary); margin-bottom: 10px; }
+        .case-list { margin-bottom: 16px; }
+        .case-item { padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 8px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+        .case-item:hover { background: #f9fafb; }
+        .case-item.active { border-color: var(--accent); background: var(--accent-light); }
+        .case-id { font-size: 11px; color: var(--text-secondary); }
+        .entity-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+        .entity-tab { padding: 5px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: #fff; font-size: 12px; cursor: pointer; }
+        .entity-tab.active { background: var(--accent); color: white; border-color: var(--accent); }
+        .entity-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .entity-table th, .entity-table td { text-align: left; padding: 8px; border-bottom: 1px solid var(--border); }
+        .entity-table th { color: var(--text-secondary); font-weight: 500; }
+        .disclaimer { margin-top: 16px; font-size: 11px; color: var(--text-secondary); text-align: center; }
+        .empty-tip { color: var(--text-secondary); font-size: 13px; padding: 20px; text-align: center; }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.4);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: #fff;
+            border-radius: var(--radius);
+            width: 760px;
+            max-width: 92vw;
+            max-height: 84vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+        }
+        .modal-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .modal-title { font-size: 16px; font-weight: 600; }
+        .modal-close { font-size: 20px; cursor: pointer; color: var(--text-secondary); }
+        .modal-body { padding: 20px; overflow-y: auto; flex: 1; }
+
+
+        .settings-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+        .log-list { max-height: 320px; overflow-y: auto; }
+        .log-item { padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 8px; background: #fafafa; }
+        .log-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+        .log-level { font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 4px; color: white; }
+        .log-level.info { background: var(--accent); }
+        .log-level.warning { background: var(--warning); }
+        .log-level.error { background: var(--error); }
+        .log-level.debug { background: var(--text-secondary); }
+        .log-name { font-size: 12px; color: var(--text-secondary); }
+        .log-time { margin-left: auto; font-size: 11px; color: var(--text-secondary); }
+        .log-message { font-size: 13px; color: var(--text); white-space: pre-wrap; }
+        .user-row { display: flex; align-items: center; justify-content: space-between; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 8px; }
+        .user-row:hover { background: #f5f5f7; }
+        .user-row.active { border-color: var(--accent); background: var(--accent-light); }
+        .user-id { font-size: 12px; color: var(--text-secondary); }
+        .form-actions { display: flex; gap: 8px; margin-top: 10px; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <div class="top-bar">
+        <div class="top-left">
+            <div class="traffic-lights">
+                <div class="light close" title="关闭" onclick="app.closeWindow()"></div>
+                <div class="light min" title="最小化" onclick="app.minimizeWindow()"></div>
+                <div class="light max" title="最大化" onclick="app.maximizeWindow()"></div>
+            </div>
+            <div class="app-title">Metascend 庭审助手</div>
+        </div>
+        <div class="top-right">
+            <div class="status-badge" id="topStatus">
+                <div class="status-dot"></div>
+                <span>就绪</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="app-body">
+        <aside class="sidebar">
+            <div class="mode-tabs">
+                <button class="mode-tab active" data-mode="work" onclick="app.switchMode('work')">
+                    <span>💼</span> Work
+                </button>
+                <button class="mode-tab" data-mode="chat" onclick="app.switchMode('chat')">
+                    <span>💬</span> Chat
+                </button>
+            </div>
+
+            <div class="sidebar-section" id="workMenu">
+                <div class="sidebar-title">庭审工作</div>
+                <div class="sidebar-item active" data-page="work" onclick="app.switchPage('work')"><span class="sidebar-icon">⚖️</span>庭审实时辅助</div>
+                <div class="sidebar-item" data-page="calibration" onclick="app.switchPage('calibration')"><span class="sidebar-icon">🎙️</span>角色声纹校准</div>
+                <div class="sidebar-item" data-page="evidence" onclick="app.switchPage('evidence')"><span class="sidebar-icon">📁</span>证据管理</div>
+                <div class="sidebar-item" data-page="case" onclick="app.switchPage('case')"><span class="sidebar-icon">📂</span>案件档案</div>
+            </div>
+
+            <div class="sidebar-section hidden" id="chatMenu">
+                <div class="sidebar-title">庭后分析</div>
+                <div class="sidebar-item active" data-page="chat" onclick="app.switchMode('chat')"><span class="sidebar-icon">💬</span>智能问答</div>
+                <div class="sidebar-item" onclick="app.switchMode('chat'); app.showChatPanel('history')"><span class="sidebar-icon">📝</span>历史会话</div>
+                <div class="sidebar-item" onclick="app.switchMode('chat'); app.showChatPanel('report')"><span class="sidebar-icon">📊</span>策略报告</div>
+            </div>
+
+            <div class="kb-card">
+                <div class="kb-header">
+                    <div class="kb-title">本地向量知识库</div>
+                    <div class="kb-status"><span>●</span><span id="kb-status-text">已加载</span></div>
+                </div>
+                <div class="kb-list" id="kb-list">
+                    <span class="kb-tag">民法典</span>
+                    <span class="kb-tag">民诉法</span>
+                    <span class="kb-tag">借贷案例</span>
+                    <span class="kb-tag">离婚案例</span>
+                    <span class="kb-tag">劳动案例</span>
+                </div>
+                <button class="kb-btn" onclick="app.importKnowledge()">+ 导入法律文档</button>
+            </div>
+
+            <div class="user-area" onclick="app.toggleUserMenu()">
+                <div class="avatar">法</div>
+                <div class="user-meta">
+                    <div class="user-name" id="user-area-name">法律助手</div>
+                    <div class="user-badge" id="user-area-badge">Local</div>
+                </div>
+                <div class="user-menu" id="user-menu">
+                    <button class="user-menu-item" onclick="app.switchPage('users'); app.closeUserMenu();">👤 用户管理</button>
+                    <button class="user-menu-item" onclick="app.switchPage('settings'); app.closeUserMenu();">⚙️ 设置</button>
+                    <div class="user-menu-sep"></div>
+                    <button class="user-menu-item danger" onclick="app.closeWindow(); app.closeUserMenu();">退出应用</button>
+                </div>
+            </div>
+        </aside>
+
+        <main class="main">
+            <div class="content" id="workMode" class="page active">
+                <div class="page-header">
+                    <h1>庭审实时辅助</h1>
+                    <p>实时语音识别、说话人分离、法律策略提示，全部在本地运行</p>
+                    <div id="active-case-banner" style="margin-top:8px;font-size:12px;color:var(--text-secondary);">
+                        当前案件：<span class="active-case-id">-</span> <span class="active-case-title">-</span>
+                    </div>
+                </div>
+
+                <div class="service-grid">
+                    <div class="service-card"><h4>语音识别 ASR</h4><div class="service-status"><div class="service-dot"></div><span id="svc-asr">初始化中</span></div></div>
+                    <div class="service-card"><h4>说话人分离</h4><div class="service-status"><div class="service-dot"></div><span id="svc-diarization">未启用</span></div></div>
+                    <div class="service-card"><h4>法律策略引擎</h4><div class="service-status"><div class="service-dot"></div><span id="svc-legal">未启用</span></div></div>
+                    <div class="service-card"><h4>语音合成 TTS</h4><div class="service-status"><div class="service-dot"></div><span id="svc-tts">未启用</span></div></div>
+                </div>
+
+                <div class="transcript-card">
+                    <div class="card-header">
+                        <div class="card-title">实时转写</div>
+                        <div class="card-actions">
+                            <button class="btn-sm" id="mute-btn" onclick="app.toggleMute()">🔇 静音</button>
+                            <button class="btn-sm primary" id="start-btn" onclick="app.toggleCourtroom()">▶ 开始庭审</button>
+                        </div>
+                    </div>
+                    <div class="transcript-body" id="transcript-body">
+                        <div class="empty-tip">点击「开始庭审」后，语音会实时转写在这里...</div>
+                    </div>
+                </div>
+
+                <div class="suggestion-card">
+                    <h4>💡 法律提示</h4>
+                    <p id="suggestion-text">暂无提示。庭审开始后，对方发言中的法律要点会在这里显示。</p>
+                </div>
+                <div class="suggestion-card countermeasure-card">
+                    <h4>🛡️ 应对建议</h4>
+                    <p id="countermeasure-text">暂无应对建议。庭审开始后，这里会显示建议回复或反驳要点。</p>
+                </div>
+                <div class="disclaimer">
+                    <span id="latency-text"></span>
+                    <br>本系统输出仅供参考，不构成法律意见。最终决策权始终属于用户。
+                </div>
+            </div>
+
+    <div class="content hidden page" id="evidencePage" class="page">
+                <div class="page-header">
+                    <div class="page-header-row">
+                        <div>
+                            <h1>证据管理</h1>
+                            <p>统一管理案件证据文件，全部保存在本地</p>
+                        </div>
+                        <div class="page-header-actions">
+                            <button class="btn-sm primary" onclick="app.importEvidence()">+ 导入证据</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header" style="padding:0 0 12px 0;border-bottom:1px solid var(--border);margin-bottom:12px;">
+                        <div class="card-title">证据文件</div>
+                        <div class="card-actions"><button class="btn-sm primary" onclick="app.importEvidence()">+ 导入证据</button></div>
+                    </div>
+                    <div class="evidence-grid" id="evidence-grid"><div class="empty-tip">暂无证据文件</div></div>
+                </div>
+                <div class="disclaimer">证据文件仅保存在本地，未启用云端同步。</div>
+            </div>
+
+            <div class="content hidden page" id="casePage" class="page">
+                <div class="page-header">
+                    <div class="page-header-row">
+                        <div>
+                            <h1>案件档案</h1>
+                            <p>创建案件并维护当事人、证据、诉求与法条信息</p>
+                        </div>
+                        <div class="page-header-actions">
+                            <button class="btn-sm" onclick="app.createCase()">+ 新建案件</button>
+                            <button class="btn-sm primary" onclick="app.setActiveCase()">设为当前案件</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header" style="padding:0 0 12px 0;border-bottom:1px solid var(--border);margin-bottom:12px;">
+                        <div class="card-title">案件列表</div>
+                        <div class="card-actions">
+                            <button class="btn-sm" onclick="app.createCase()">+ 新建案件</button>
+                            <button class="btn-sm primary" onclick="app.setActiveCase()">设为当前案件</button>
+                        </div>
+                    </div>
+                    <div class="case-list" id="case-list"><div class="empty-tip">暂无案件</div></div>
+                </div>
+                <div class="card hidden" id="case-detail">
+                    <h3 id="case-detail-title">案件详情</h3>
+                   <div class="entity-tabs">
+                       <button class="entity-tab active" data-tab="parties" onclick="app.switchEntityTab('parties')">当事人</button>
+                       <button class="entity-tab" data-tab="evidence" onclick="app.switchEntityTab('evidence')">证据</button>
+                       <button class="entity-tab" data-tab="materials" onclick="app.switchEntityTab('materials')">资料</button>
+                       <button class="entity-tab" data-tab="appeals" onclick="app.switchEntityTab('appeals')">诉求</button>
+                       <button class="entity-tab" data-tab="related_cases" onclick="app.switchEntityTab('related_cases')">相关案例</button>
+                       <button class="entity-tab" data-tab="clauses" onclick="app.switchEntityTab('clauses')">法条</button>
+                       <button class="entity-tab" data-tab="facts" onclick="app.switchEntityTab('facts')">事实</button>
+                       <button class="entity-tab" data-tab="strategy_notes" onclick="app.switchEntityTab('strategy_notes')">策略笔记</button>
+                   </div>
+                   <div id="tab-parties" class="entity-tab-content"><table class="entity-table"><thead><tr><th>编码</th><th>角色</th><th>姓名</th><th>描述</th></tr></thead><tbody></tbody></table><button class="btn-sm" style="margin-top:10px;" onclick="app.addParty()">+ 添加当事人</button></div>
+                   <div id="tab-evidence" class="entity-tab-content hidden"><table class="entity-table"><thead><tr><th>编码</th><th>名称</th><th>类型</th><th>说明</th></tr></thead><tbody></tbody></table><button class="btn-sm" style="margin-top:10px;" onclick="app.addEvidence()">+ 添加证据</button></div>
+                   <div id="tab-materials" class="entity-tab-content hidden"><table class="entity-table"><thead><tr><th>编码</th><th>标题</th><th>内容摘要</th></tr></thead><tbody></tbody></table><button class="btn-sm" style="margin-top:10px;" onclick="app.addMaterial()">+ 添加资料</button></div>
+                   <div id="tab-appeals" class="entity-tab-content hidden"><table class="entity-table"><thead><tr><th>编码</th><th>标题</th><th>类型</th><th>内容</th></tr></thead><tbody></tbody></table><button class="btn-sm" style="margin-top:10px;" onclick="app.addAppeal()">+ 添加诉求</button></div>
+                   <div id="tab-related_cases" class="entity-tab-content hidden"><table class="entity-table"><thead><tr><th>编码</th><th>标题</th><th>来源</th><th>摘要</th></tr></thead><tbody></tbody></table><button class="btn-sm" style="margin-top:10px;" onclick="app.addRelatedCase()">+ 添加相关案例</button></div>
+                   <div id="tab-clauses" class="entity-tab-content hidden"><table class="entity-table"><thead><tr><th>编码</th><th>名称</th><th>来源</th></tr></thead><tbody></tbody></table><button class="btn-sm" style="margin-top:10px;" onclick="app.addLegalClause()">+ 添加法条</button></div>
+                    <div id="tab-facts" class="entity-tab-content hidden"><table class="entity-table"><thead><tr><th>编码</th><th>内容</th></tr></thead><tbody></tbody></table><button class="btn-sm" style="margin-top:10px;" onclick="app.addFact()">+ 添加事实</button></div>
+                    <div id="tab-strategy_notes" class="entity-tab-content hidden"><table class="entity-table"><thead><tr><th>编码</th><th>内容</th></tr></thead><tbody></tbody></table><button class="btn-sm" style="margin-top:10px;" onclick="app.addArgument()">+ 添加策略笔记</button></div>
+                </div>
+                <div class="disclaimer">案件数据保存在本地，不会自动同步到云端。</div>
+            </div>
+
+            <div class="content hidden page" id="settingsPage" class="page">
+                <div class="page-header">
+                    <div class="page-header-row">
+                        <div>
+                            <h1>设置</h1>
+                            <p>功能开关、日志查看与账号管理</p>
+                        </div>
+                        <div class="page-header-actions">
+                            <button class="btn-sm" onclick="app.refreshErrorLogs()">刷新日志</button>
+                            <button class="btn-sm danger" onclick="app.clearErrorLogs()">清空日志</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-grid">
+                    <div class="card">
+                        <div class="card-header" style="padding:0 0 12px 0;border-bottom:1px solid var(--border);margin-bottom:12px;">
+                            <div class="card-title">功能开关</div>
+                        </div>
+                        <div class="toggle-row"><span>说话人分离</span><div class="toggle" id="toggle-diarization" onclick="app.toggleSetting('ENABLE_DIARIZATION')"></div></div>
+                        <div class="toggle-row"><span>法律策略引擎</span><div class="toggle" id="toggle-legal" onclick="app.toggleSetting('ENABLE_LEGAL_ASSISTANT')"></div></div>
+                        <div class="toggle-row"><span>语音合成 TTS</span><div class="toggle" id="toggle-tts" onclick="app.toggleSetting('ENABLE_TTS')"></div></div>
+                        <div class="toggle-row"><span>加密录音</span><div class="toggle" id="toggle-recording" onclick="app.toggleSetting('ENABLE_RECORDING')"></div></div>
+                        <div style="margin-top:14px;color:var(--text-secondary);font-size:12px;">部分设置会在下次启动后生效。</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header" style="padding:0 0 12px 0;border-bottom:1px solid var(--border);margin-bottom:12px;">
+                            <div class="card-title">报错日志</div>
+                        </div>
+                        <div class="log-list" id="error-log-list"><div class="empty-tip">暂无报错日志</div></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="content hidden page" id="usersPage" class="page">
+                <div class="page-header">
+                    <div class="page-header-row">
+                        <div>
+                            <h1>用户管理</h1>
+                            <p>本地多账号切换与管理，数据仅保存在本机</p>
+                        </div>
+                        <div class="page-header-actions">
+                            <button class="btn-sm primary" onclick="app.openAddUser()">+ 新建用户</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header" style="padding:0 0 12px 0;border-bottom:1px solid var(--border);margin-bottom:12px;">
+                        <div class="card-title">用户列表</div>
+                    </div>
+                    <div id="user-list"><div class="empty-tip">暂无用户</div></div>
+                </div>
+                <div class="card hidden" id="user-detail">
+                    <h3 id="user-detail-title">用户详情</h3>
+                    <div class="form-row"><label>用户名</label><input type="text" id="user-username" disabled></div>
+                    <div class="form-row"><label>显示名称</label><input type="text" id="user-display"></div>
+                    <div class="form-row"><label>角色</label><input type="text" id="user-role" disabled></div>
+                    <div class="form-row"><label>密码</label><input type="password" id="user-password" placeholder="留空则不修改"></div>
+                    <div class="form-actions"><button class="btn-sm primary" onclick="app.saveUserDetail()">保存</button><button class="btn-sm danger" onclick="app.deleteCurrentUser()">删除用户</button></div>
+                </div>
+                <div class="disclaimer">用户数据保存在本地，当前为本地便利账号，不建议用于强安全场景。</div>
+            </div>    </main>
+    </div>
+
+    <div class="modal-overlay" id="modal-calibration" onclick="app.closeModalOnBackdrop(event)">
+        <div class="modal">
+            <div class="modal-header"><div class="modal-title">角色声纹校准</div><div class="modal-close" onclick="app.closeModal('calibration')">×</div></div>
+            <div class="modal-body">
+                <p style="margin-bottom:14px;color:var(--text-secondary);font-size:13px;">开庭前录制各角色 5 秒语音样本，提升说话人识别准确率</p>
+                <div class="cal-grid">
+                    <div class="cal-card"><h4>👨‍⚖️ 法官</h4><div class="cal-status" id="cal-judge">未校准</div><button class="btn-sm primary" onclick="app.calibrate('法官')">开始录制</button></div>
+                    <div class="cal-card"><h4>🙂 己方</h4><div class="cal-status" id="cal-self">未校准</div><button class="btn-sm primary" onclick="app.calibrate('己方')">开始录制</button></div>
+                    <div class="cal-card"><h4>🗣️ 对方</h4><div class="cal-status" id="cal-opponent">未校准</div><button class="btn-sm primary" onclick="app.calibrate('对方')">开始录制</button></div>
+                    <div class="cal-card"><h4>🧑‍💼 证人</h4><div class="cal-status" id="cal-witness">未校准</div><button class="btn-sm primary" onclick="app.calibrate('证人')">开始录制</button></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-evidence" onclick="app.closeModalOnBackdrop(event)">
+        <div class="modal">
+            <div class="modal-header"><div class="modal-title">证据管理</div><div class="modal-close" onclick="app.closeModal('evidence')">×</div></div>
+            <div class="modal-body">
+                <div class="card-header" style="padding:0 0 12px 0;border-bottom:1px solid var(--border);margin-bottom:12px;">
+                    <div class="card-title">证据文件</div>
+                    <div class="card-actions"><button class="btn-sm primary" onclick="app.importEvidence()">+ 导入证据</button></div>
+                </div>
+                <div class="evidence-grid" id="evidence-grid"><div class="empty-tip">暂无证据文件</div></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-case" onclick="app.closeModalOnBackdrop(event)">
+        <div class="modal">
+            <div class="modal-header"><div class="modal-title">案件档案</div><div class="modal-close" onclick="app.closeModal('case')">×</div></div>
+            <div class="modal-body">
+                <div class="card">
+                    <div class="card-header" style="padding:0 0 12px 0;border-bottom:1px solid var(--border);margin-bottom:12px;">
+                        <div class="card-title">案件列表</div>
+                        <div class="card-actions">
+                            <button class="btn-sm" onclick="app.createCase()">+ 新建案件</button>
+                            <button class="btn-sm primary" onclick="app.setActiveCase()">设为当前案件</button>
+                        </div>
+                    </div>
+                    <div class="case-list" id="case-list"><div class="empty-tip">暂无案件</div></div>
+                </div>
+                <div class="card hidden" id="case-detail">
+                    <h3 id="case-detail-title">案件详情</h3>
+                   <div class="entity-tabs">
+                       <button class="entity-tab active" data-tab="parties" onclick="app.switchEntityTab('parties')">当事人</button>
+                       <button class="entity-tab" data-tab="evidence" onclick="app.switchEntityTab('evidence')">证据</button>
+                       <button class="entity-tab" data-tab="materials" onclick="app.switchEntityTab('materials')">资料</button>
+                       <button class="entity-tab" data-tab="appeals" onclick="app.switchEntityTab('appeals')">诉求</button>
+                       <button class="entity-tab" data-tab="related_cases" onclick="app.switchEntityTab('related_cases')">相关案例</button>
+                       <button class="entity-tab" data-tab="clauses" onclick="app.switchEntityTab('clauses')">法条</button>
+                       <button class="entity-tab" data-tab="facts" onclick="app.switchEntityTab('facts')">事实</button>
+                       <button class="entity-tab" data-tab="strategy_notes" onclick="app.switchEntityTab('strategy_notes')">策略笔记</button>
+                   </div>
+                   <div id="tab-parties" class="entity-tab-content"><table class="entity-table"><thead><tr><th>编码</th><th>角色</th><th>姓名</th><th>描述</th></tr></thead><tbody></tbody></table><button class="btn-sm" style="margin-top:10px;" onclick="app.addParty()">+ 添加当事人</button></div>
+                   <div id="tab-evidence" class="entity-tab-content hidden"><table class="entity-table"><thead><tr><th>编码</th><th>名称</th><th>类型</th><th>说明</th></tr></thead><tbody></tbody></table><button class="btn-sm" style="margin-top:10px;" onclick="app.addEvidence()">+ 添加证据</button></div>
+                   <div id="tab-materials" class="entity-tab-content hidden"><table class="entity-table"><thead><tr><th>编码</th><th>标题</th><th>内容摘要</th></tr></thead><tbody></tbody></table><button class="btn-sm" style="margin-top:10px;" onclick="app.addMaterial()">+ 添加资料</button></div>
+                   <div id="tab-appeals" class="entity-tab-content hidden"><table class="entity-table"><thead><tr><th>编码</th><th>标题</th><th>类型</th><th>内容</th></tr></thead><tbody></tbody></table><button class="btn-sm" style="margin-top:10px;" onclick="app.addAppeal()">+ 添加诉求</button></div>
+                   <div id="tab-related_cases" class="entity-tab-content hidden"><table class="entity-table"><thead><tr><th>编码</th><th>标题</th><th>来源</th><th>摘要</th></tr></thead><tbody></tbody></table><button class="btn-sm" style="margin-top:10px;" onclick="app.addRelatedCase()">+ 添加相关案例</button></div>
+                   <div id="tab-clauses" class="entity-tab-content hidden"><table class="entity-table"><thead><tr><th>编码</th><th>名称</th><th>来源</th></tr></thead><tbody></tbody></table><button class="btn-sm" style="margin-top:10px;" onclick="app.addLegalClause()">+ 添加法条</button></div>
+                    <div id="tab-facts" class="entity-tab-content hidden"><table class="entity-table"><thead><tr><th>编码</th><th>内容</th></tr></thead><tbody></tbody></table><button class="btn-sm" style="margin-top:10px;" onclick="app.addFact()">+ 添加事实</button></div>
+                    <div id="tab-strategy_notes" class="entity-tab-content hidden"><table class="entity-table"><thead><tr><th>编码</th><th>内容</th></tr></thead><tbody></tbody></table><button class="btn-sm" style="margin-top:10px;" onclick="app.addArgument()">+ 添加策略笔记</button></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="modal-settings" onclick="app.closeModalOnBackdrop(event)">
+        <div class="modal">
+            <div class="modal-header"><div class="modal-title">设置</div><div class="modal-close" onclick="app.closeModal('settings')">×</div></div>
+            <div class="modal-body">
+                <p style="margin-bottom:14px;color:var(--text-secondary);font-size:13px;">功能开关，保存后重启生效</p>
+                <div class="card">
+                    <div class="toggle-row"><span>说话人分离</span><div class="toggle" id="toggle-diarization" onclick="app.toggleSetting('ENABLE_DIARIZATION')"></div></div>
+                    <div class="toggle-row"><span>法律策略引擎</span><div class="toggle" id="toggle-legal" onclick="app.toggleSetting('ENABLE_LEGAL_ASSISTANT')"></div></div>
+                    <div class="toggle-row"><span>语音合成 TTS</span><div class="toggle" id="toggle-tts" onclick="app.toggleSetting('ENABLE_TTS')"></div></div>
+                    <div class="toggle-row"><span>加密录音</span><div class="toggle" id="toggle-recording" onclick="app.toggleSetting('ENABLE_RECORDING')"></div></div>
+                    <div style="margin-top:16px;"><button class="btn-sm primary" onclick="app.saveSettings()">保存设置</button></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function api() {
+            return (window.pywebview && window.pywebview.api) ? window.pywebview.api : null;
+        }
+
+        const app = {
+            mode: 'work',
+            page: 'work',
+            userMenuOpen: false,
+            muted: false,
+            courtroomRunning: false,
+            activeCaseId: null,
+            cases: [],
+            currentCase: null,
+            entityTab: 'parties',
+            chatPanel: 'main',
+            currentUser: null,
+            detailUserId: null,
+            history: [],
+            settings: {
+                ENABLE_DIARIZATION: false,
+                ENABLE_LEGAL_ASSISTANT: false,
+                ENABLE_TTS: false,
+                ENABLE_RECORDING: false,
+            },
+
+            switchMode(mode) {
+                this.mode = mode;
+                document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+                document.querySelector('.mode-tab[data-mode="' + mode + '"]').classList.add('active');
+                if (mode === 'work') {
+                    this.switchPage('work');
+                    document.getElementById('workMenu').classList.remove('hidden');
+                    document.getElementById('chatMenu').classList.add('hidden');
+                } else {
+                    document.getElementById('workMode').classList.add('hidden');
+                    document.getElementById('evidencePage').classList.add('hidden');
+                    document.getElementById('casePage').classList.add('hidden');
+                    document.getElementById('settingsPage').classList.add('hidden');
+                    document.getElementById('usersPage').classList.add('hidden');
+                    document.getElementById('chatMode').classList.remove('hidden');
+                    document.getElementById('workMenu').classList.add('hidden');
+                    document.getElementById('chatMenu').classList.remove('hidden');
+                    this.showChatPanel('main');
+                }
+            },
+
+            switchPage(page) {
+                this.page = page;
+                ['workMode','evidencePage','casePage','settingsPage','usersPage','chatMode'].forEach(id => document.getElementById(id).classList.add('hidden'));
+                const map = { work:'workMode', evidence:'evidencePage', case:'casePage', settings:'settingsPage', users:'usersPage', chat:'chatMode' };
+                const target = map[page];
+                if (target) document.getElementById(target).classList.remove('hidden');
+                document.querySelectorAll('.sidebar-item').forEach(item => item.classList.remove('active'));
+                const active = document.querySelector('.sidebar-item[data-page="' + page + '"]');
+                if (active) active.classList.add('active');
+                if (page === 'evidence') this.refreshEvidenceGrid();
+                if (page === 'case') this.refreshCaseList();
+                if (page === 'settings') { this.refreshErrorLogs(); this.refreshSettingsForm(); }
+                if (page === 'users') this.refreshUserList();
+            },
+
+            openModal(name) {
+                const el = document.getElementById('modal-' + name);
+                if (el) el.classList.add('active');
+                if (name === 'case') this.refreshCaseList();
+                if (name === 'evidence') this.refreshEvidenceGrid();
+            },
+            closeModal(name) {
+                const el = document.getElementById('modal-' + name);
+                if (el) el.classList.remove('active');
+            },
+            closeModalOnBackdrop(e) {
+                if (e.target === e.currentTarget) e.target.classList.remove('active');
+            },
+
+            toggleUserMenu() {
+                this.userMenuOpen = !this.userMenuOpen;
+                document.getElementById('user-menu').classList.toggle('active', this.userMenuOpen);
+            },
+
+            closeUserMenu() {
+                this.userMenuOpen = false;
+                const menu = document.getElementById('user-menu');
+                if (menu) menu.classList.remove('active');
+            },
+
+            showChatPanel(panel) {
+                this.chatPanel = panel;
+                ['main', 'history', 'report'].forEach(p => document.getElementById('chat-panel-' + p).classList.add('hidden'));
+                document.getElementById('chat-panel-' + panel).classList.remove('hidden');
+                if (panel === 'history') this.refreshHistory();
+                if (panel === 'report') this.generateReport();
+            },
+
+            closeWindow() { const a = api(); if (a && a.closeWindow) a.closeWindow(); },
+            minimizeWindow() { const a = api(); if (a && a.minimizeWindow) a.minimizeWindow(); },
+            maximizeWindow() { const a = api(); if (a && a.maximizeWindow) a.maximizeWindow(); },
+
+            setStatus(status) {
+                const badge = document.getElementById('topStatus');
+                const dot = badge.querySelector('.status-dot');
+                const label = badge.querySelector('span');
+                badge.className = 'status-badge';
+                dot.style.background = '';
+                dot.style.boxShadow = '';
+                if (status === 'error') {
+                    badge.classList.add('error');
+                    label.textContent = '服务异常';
+                } else if (status === 'processing') {
+                    badge.classList.add('processing');
+                    label.textContent = '处理中';
+                } else if (status === 'listening') {
+                    dot.style.background = 'var(--success)';
+                    dot.style.boxShadow = '0 0 0 2px rgba(34, 197, 94, 0.2)';
+                    label.textContent = '服务正常';
+                } else {
+                    dot.style.background = 'var(--warning)';
+                    dot.style.boxShadow = '0 0 0 2px rgba(245, 158, 11, 0.2)';
+                    label.textContent = '就绪';
+                }
+            },
+
+            toggleCourtroom() {
+                this.courtroomRunning = !this.courtroomRunning;
+                const btn = document.getElementById('start-btn');
+                btn.textContent = this.courtroomRunning ? '⏸ 暂停庭审' : '▶ 开始庭审';
+                const a = api();
+                if (a && a.toggleCourtroom) a.toggleCourtroom(this.courtroomRunning);
+            },
+
+            toggleMute() {
+                this.muted = !this.muted;
+                const btn = document.getElementById('mute-btn');
+                btn.textContent = this.muted ? '🔇 已静音' : '🔇 静音';
+                const a = api();
+                if (a && a.setMuted) a.setMuted(this.muted);
+            },
+
+            appendTranscript(text) {
+                const container = document.getElementById('transcript-body');
+                if (container.querySelector('.empty-tip')) container.innerHTML = '';
+                const line = document.createElement('div');
+                line.className = 'tx-line';
+                const m = text.match(/^\[([^\]]+)\]/);
+                if (m) {
+                    const roleSpan = document.createElement('span');
+                    roleSpan.className = 'tx-role ' + (m[1] === '法官' ? 'judge' : m[1] === '己方' ? 'self' : m[1] === '对方' ? 'opponent' : m[1] === '证人' ? 'witness' : '');
+                    roleSpan.textContent = '[' + m[1] + ']';
+                    line.appendChild(roleSpan);
+                    line.appendChild(document.createTextNode(text.slice(m[0].length)));
+                } else {
+                    line.textContent = text;
+                }
+                container.appendChild(line);
+                container.scrollTop = container.scrollHeight;
+            },
+
+            updateSuggestion(text, laws) {
+                const el = document.getElementById('suggestion-text');
+                const refs = laws && laws.length ? '\n参考：' + laws.join(' · ') : '';
+                el.textContent = text + refs;
+            },
+            updateCountermeasure(text, laws) {
+                const el = document.getElementById('countermeasure-text');
+                const refs = laws && laws.length ? '\n参考：' + laws.join(' · ') : '';
+                el.textContent = text + refs;
+            },
+
+            setLatency(text) {
+                const el = document.getElementById('latency-text');
+                if (el) el.textContent = text;
+            },
+
+            setServiceStatus(name, state) {
+                const map = { '语音识别 ASR': 'svc-asr', '说话人分离': 'svc-diarization', '法律策略引擎': 'svc-legal', '语音合成 TTS': 'svc-tts' };
+                const id = map[name];
+                if (id) {
+                    const el = document.getElementById(id);
+                    if (el) el.textContent = state;
+                }
+                const cards = document.querySelectorAll('.service-card');
+                let anyError = false;
+                cards.forEach(card => {
+                    const title = card.querySelector('h4').textContent;
+                    if (title === name) {
+                        const dot = card.querySelector('.service-dot');
+                        const ok = state === '运行中' || state === '就绪' || state === '已加载' || state === '已启用';
+                        dot.style.background = ok ? 'var(--success)' : (state === '异常' ? 'var(--error)' : 'var(--warning)');
+                        if (state === '异常') anyError = true;
+                    }
+                });
+                if (anyError) this.setStatus('error');
+            },
+
+            sendChat() {
+                const input = document.getElementById('chat-input');
+                const text = input.value.trim();
+                if (!text) return;
+                this.addChatMessage('user', text);
+                const a = api();
+                if (a && a.sendChat) a.sendChat(text);
+                input.value = '';
+            },
+
+            addChatMessage(sender, text, ref) {
+                const container = document.getElementById('chat-messages');
+                const row = document.createElement('div');
+                row.className = 'chat-msg ' + (sender === 'user' ? 'user' : 'ai');
+                const avatar = document.createElement('div');
+                avatar.className = 'chat-avatar ' + (sender === 'user' ? 'user' : 'ai');
+                avatar.textContent = sender === 'user' ? '我' : 'AI';
+                const bubble = document.createElement('div');
+                bubble.className = 'chat-bubble';
+                bubble.textContent = text;
+                if (ref) {
+                    const refEl = document.createElement('div');
+                    refEl.className = 'chat-ref';
+                    refEl.textContent = ref;
+                    bubble.appendChild(refEl);
+                }
+                row.appendChild(avatar);
+                row.appendChild(bubble);
+                container.appendChild(row);
+                container.scrollTop = container.scrollHeight;
+                this.history.push({ sender, text, ref: ref || '', time: new Date().toLocaleString() });
+                this.refreshHistory();
+            },
+
+            refreshKnowledgeTags() {
+                const a = api();
+                if (!a || !a.listKnowledge) return;
+                a.listKnowledge().then(tags => {
+                    const list = document.getElementById('kb-list');
+                    if (!list || !tags) return;
+                    let html = '';
+                    tags.forEach(t => { html += '<span class="kb-tag">' + t + '</span>'; });
+                    list.innerHTML = html;
+                }).catch(() => {});
+            },
+            addKnowledgeTag(name) {
+                const list = document.getElementById('kb-list');
+                if (!list) return;
+                const span = document.createElement('span');
+                span.className = 'kb-tag';
+                span.textContent = name;
+                list.appendChild(span);
+            },
+            importKnowledge() {
+                const a = api();
+                if (a && a.importKnowledge) a.importKnowledge();
+                else alert('请在应用内使用此功能。');
+            },
+
+            refreshCaseList() {
+                const a = api();
+                if (!a || !a.listCases) return;
+                a.listCases().then(cases => {
+                    this.cases = cases || [];
+                    const list = document.getElementById('case-list');
+                    if (!list) return;
+                    if (!cases || cases.length === 0) {
+                        list.innerHTML = '<div class="empty-tip">暂无案件</div>';
+                        return;
+                    }
+                    list.innerHTML = '';
+                    const self = this;
+                    cases.forEach(c => {
+                        const item = document.createElement('div');
+                        item.className = 'case-item ' + (c.case_id === self.activeCaseId ? 'active' : '');
+                        item.onclick = function() { self.loadCaseDetail(c.case_id); };
+                        const label = c.case_id === self.activeCaseId ? '当前' : '选择';
+                        item.innerHTML = '<div><div style="font-weight:500;">' + c.title + '</div><div class="case-id">' + c.case_id + ' · ' + c.case_type + '</div></div><div class="btn-sm">' + label + '</div>';
+                        list.appendChild(item);
+                    });
+                }).catch(e => console.error(e));
+            },
+
+            async createCase() {
+                const title = prompt('案件标题');
+                if (!title) return;
+                const case_type = prompt('案件类型（loan/divorce/labor/contract/other）', 'other');
+                const a = api();
+                if (!a || !a.createCase) return;
+                try {
+                    await a.createCase(title, case_type || 'other');
+                    this.refreshCaseList();
+                } catch (e) { alert('创建失败：' + e); }
+            },
+
+            async loadCaseDetail(case_id) {
+                const a = api();
+                if (!a || !a.loadCase) return;
+                try {
+                    const c = await a.loadCase(case_id);
+                    this.currentCase = c;
+                    document.getElementById('case-detail').classList.remove('hidden');
+                    document.getElementById('case-detail-title').textContent = c.title + ' (' + c.case_id + ')';
+                    this.renderEntities();
+                } catch (e) { alert('加载失败：' + e); }
+            },
+
+            async setActiveCase() {
+                if (!this.currentCase) {
+                    alert('请先选择案件');
+                    return;
+                }
+                const a = api();
+                if (!a || !a.setActiveCase) return;
+                try {
+                    await a.setActiveCase(this.currentCase.case_id);
+                    this.activeCaseId = this.currentCase.case_id;
+                    this.renderActiveCaseBanner();
+                    this.refreshCaseList();
+                } catch (e) { alert('设置失败：' + e); }
+            },
+
+            renderEntities() {
+                if (!this.currentCase) return;
+                const render = (key, fields, containerId) => {
+                    const tbody = document.querySelector('#' + containerId + ' tbody');
+                    if (!tbody) return;
+                    const items = this.currentCase[key] || [];
+                    if (items.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="' + fields.length + '" style="color:var(--text-secondary);text-align:center;">暂无数据</td></tr>';
+                        return;
+                    }
+                    let html = '';
+                    items.forEach(item => {
+                        html += '<tr>';
+                        fields.forEach(f => { html += '<td>' + (item[f] || '') + '</td>'; });
+                        html += '</tr>';
+                    });
+                    tbody.innerHTML = html;
+                };
+                render('parties', ['code', 'role', 'name', 'description'], 'tab-parties');
+                render('evidence', ['code', 'title', 'evidence_type', 'description'], 'tab-evidence');
+                render('materials', ['code', 'title', 'content'], 'tab-materials');
+                render('appeals', ['code', 'title', 'appeal_type', 'content'], 'tab-appeals');
+                render('related_cases', ['code', 'title', 'source', 'summary'], 'tab-related_cases');
+                render('legal_clauses', ['code', 'title', 'law_source'], 'tab-clauses');
+                render('facts', ['code', 'content'], 'tab-facts');
+                render('strategy_notes', ['code', 'content'], 'tab-strategy_notes');
+            },
+
+            switchEntityTab(tab) {
+                this.entityTab = tab;
+                document.querySelectorAll('.entity-tab').forEach(t => t.classList.remove('active'));
+                const activeTab = document.querySelector('.entity-tab[data-tab="' + tab + '"]');
+                if (activeTab) activeTab.classList.add('active');
+                document.querySelectorAll('.entity-tab-content').forEach(el => el.classList.add('hidden'));
+                const content = document.getElementById('tab-' + tab);
+                if (content) content.classList.remove('hidden');
+            },
+
+            async addEntity(apiName, prompts, fields) {
+                if (!this.currentCase) { alert('请先选择案件'); return; }
+                const values = {};
+                for (let i = 0; i < prompts.length; i++) {
+                    const key = prompts[i][0];
+                    const label = prompts[i][1];
+                    const val = prompt(label);
+                    if (val === null) return;
+                    values[key] = val;
+                }
+                const a = api();
+                if (!a || !a[apiName]) return;
+                try {
+                    const args = fields.map(f => values[f]);
+                    await a[apiName](this.currentCase.case_id, ...args);
+                    const c = await a.loadCase(this.currentCase.case_id);
+                    this.currentCase = c;
+                    this.renderEntities();
+                } catch (e) { alert('添加失败：' + e); }
+            },
+
+            addParty() { this.addEntity('addParty', [['name','姓名'],['role','角色（plaintiff/defendant/judge/witness/third_party）'],['description','描述']], ['name','role','description']); },
+            addEvidence() { this.addEntity('addEvidence', [['title','证据名称'],['description','证据说明'],['evidence_type','类型（document/audio/video/physical/witness）']], ['title','description','evidence_type']); },
+            addMaterial() { this.addEntity('addMaterial', [['title','资料标题'],['content','资料内容']], ['title','content']); },
+            addAppeal() { this.addEntity('addAppeal', [['title','诉求标题'],['content','诉求内容'],['appeal_type','类型（complaint/answer/counterclaim/appeal）']], ['title','content','appeal_type']); },
+            addRelatedCase() { this.addEntity('addRelatedCase', [['title','案例标题'],['source','来源'],['summary','摘要']], ['title','source','summary']); },
+            addLegalClause() { this.addEntity('addLegalClause', [['title','条款名称'],['content','条款内容'],['law_source','法律来源']], ['title','content','law_source']); },
+            addFact() { this.addEntity('addFact', [['content','事实内容']], ['content']); },
+            addArgument() { this.addEntity('addArgument', [['content','策略笔记内容']], ['content']); },
+
+            renderActiveCaseBanner() {
+                const banner = document.getElementById('active-case-banner');
+                if (!banner) return;
+                const active = this.cases.find(c => c.case_id === this.activeCaseId);
+                const title = active ? active.title : (this.currentCase && this.currentCase.case_id === this.activeCaseId ? this.currentCase.title : '-');
+                const cid = active ? active.case_id : (this.currentCase && this.currentCase.case_id === this.activeCaseId ? this.currentCase.case_id : '-');
+                banner.querySelector('.active-case-id').textContent = cid;
+                banner.querySelector('.active-case-title').textContent = title;
+            },
+
+            async refreshEvidenceGrid() {
+                const a = api();
+                if (!a || !a.listEvidence) return;
+                try {
+                    const items = await a.listEvidence();
+                    const grid = document.getElementById('evidence-grid');
+                    if (!grid) return;
+                    if (!items || items.length === 0) { grid.innerHTML = '<div class="empty-tip">暂无证据文件</div>'; return; }
+                    grid.innerHTML = '';
+                    items.forEach(item => {
+                        const card = document.createElement('div');
+                        card.className = 'evidence-card';
+                        const h4 = document.createElement('h4');
+                        h4.textContent = item.name;
+                        const meta = document.createElement('div');
+                        meta.className = 'evidence-meta';
+                        meta.textContent = '大小：' + item.size + ' bytes · ' + item.suffix;
+                        const actions = document.createElement('div');
+                        actions.className = 'evidence-actions';
+                        actions.style.display = 'flex';
+                        actions.style.gap = '8px';
+                        const linkBtn = document.createElement('button');
+                        linkBtn.className = 'btn-sm';
+                        linkBtn.textContent = '关联到案件';
+                        linkBtn.onclick = () => app.linkEvidence(item.name);
+                        const delBtn = document.createElement('button');
+                        delBtn.className = 'btn-sm danger';
+                        delBtn.textContent = '删除';
+                        delBtn.onclick = () => app.deleteEvidence(item.name);
+                        actions.appendChild(linkBtn);
+                        actions.appendChild(delBtn);
+                        card.appendChild(h4);
+                        card.appendChild(meta);
+                        card.appendChild(actions);
+                        grid.appendChild(card);
+                    });
+                } catch (e) { console.error(e); }
+            },
+
+            async importEvidence() { const a = api(); if (a && a.importEvidence) a.importEvidence(); else alert('请在应用内使用此功能。'); },
+            async linkEvidence(name) {
+                if (!this.activeCaseId) { alert('请先选择当前案件'); return; }
+                const a = api();
+                if (!a || !a.linkEvidenceToCase) return;
+                try { await a.linkEvidenceToCase(this.activeCaseId, name); alert('已关联到当前案件'); }
+                catch (e) { alert('关联失败：' + e); }
+            },
+            async deleteEvidence(name) {
+                if (!confirm('确定删除 ' + name + ' 吗？')) return;
+                const a = api();
+                if (!a || !a.deleteEvidence) return;
+                try { await a.deleteEvidence(name); await this.refreshEvidenceGrid(); }
+                catch (e) { alert('删除失败：' + e); }
+            },
+            setEvidenceList(items) { if (this.page === 'evidence') this.refreshEvidenceGrid(); },
+
+            async calibrate(role) {
+                const map = { '法官': 'judge', '己方': 'self', '对方': 'opponent', '证人': 'witness' };
+                const statusEl = document.getElementById('cal-' + map[role]);
+                if (statusEl) statusEl.textContent = '准备录制...';
+                const a = api();
+                if (!a || !a.calibrate) {
+                    if (statusEl) statusEl.textContent = '未启用';
+                    return;
+                }
+                try {
+                    const result = await a.calibrate(role);
+                    if (!result.ok) {
+                        if (statusEl) statusEl.textContent = result.error || '校准失败';
+                        return;
+                    }
+                    if (statusEl) statusEl.textContent = '录制中...';
+                } catch (e) { if (statusEl) statusEl.textContent = '失败'; }
+            },
+            setCalibrationStatus(role, status) {
+                const map = { '法官': 'judge', '己方': 'self', '对方': 'opponent', '证人': 'witness' };
+                const el = document.getElementById('cal-' + map[role]);
+                if (el) el.textContent = status;
+            },
+
+            toggleSetting(key) {
+                this.settings[key] = !this.settings[key];
+                const suffix = key.replace('ENABLE_', '').toLowerCase();
+                const el = document.getElementById('toggle-' + suffix);
+                if (el) el.classList.toggle('on', this.settings[key]);
+            },
+            setSettings(settings) {
+                this.settings = Object.assign({}, this.settings, settings);
+                Object.keys(this.settings).forEach(key => {
+                    const suffix = key.replace('ENABLE_', '').toLowerCase();
+                    const el = document.getElementById('toggle-' + suffix);
+                    if (el) el.classList.toggle('on', this.settings[key]);
+                });
+            },
+            async saveSettings() {
+                const a = api();
+                if (!a || !a.updateSettings) { alert('请在应用内使用此功能。'); return; }
+                try {
+                    await a.updateSettings(this.settings);
+                    alert('设置已保存到 .env，重启后生效。');
+                    this.refreshSettingsForm();
+                } catch (e) { alert('保存失败：' + e); }
+            },
+            refreshSettingsForm() {
+                const a = api();
+                if (a && a.getSettings) {
+                    a.getSettings().then(s => this.setSettings(s)).catch(() => {});
+                } else {
+                    const defaults = Object.keys(this.settings).reduce((acc, key) => { acc[key] = false; return acc; }, {});
+                    this.setSettings(defaults);
+                }
+            },
+
+            async refreshErrorLogs() {
+                const a = api();
+                if (!a || !a.getErrorLogs) return;
+                const logs = await a.getErrorLogs();
+                const list = document.getElementById('error-log-list');
+                if (!list) return;
+                if (!logs || logs.length === 0) { list.innerHTML = '<div class="empty-tip">暂无报错日志</div>'; return; }
+                list.innerHTML = '';
+                logs.forEach(entry => {
+                    const row = document.createElement('div');
+                    row.className = 'log-item';
+                    row.innerHTML = '<div class="log-meta"><span class="log-level ' + entry.level.toLowerCase() + '">' + entry.level + '</span><span class="log-name">' + entry.name + '</span><span class="log-time">' + entry.created_at + '</span></div><div class="log-message">' + entry.message + '</div>';
+                    list.appendChild(row);
+                });
+            },
+            async clearErrorLogs() {
+                if (!confirm('确定清空报错日志吗？')) return;
+                const a = api();
+                if (a && a.clearErrorLogs) a.clearErrorLogs();
+            },
+
+            async refreshUserList() {
+                const a = api();
+                if (!a || !a.listUsers) return;
+                const users = await a.listUsers();
+                const current = this.currentUser && this.currentUser.user_id ? this.currentUser : (await a.currentUser());
+                this.currentUser = current || null;
+                this.detailUserId = current && current.user_id ? current.user_id : (users[0] && users[0].user_id) || null;
+                const list = document.getElementById('user-list');
+                const detail = document.getElementById('user-detail');
+                if (!list) return;
+                if (!users || users.length === 0) {
+                    list.innerHTML = '<div class="empty-tip">暂无用户</div>';
+                    if (detail) detail.classList.add('hidden');
+                    return;
+                }
+                list.innerHTML = '';
+                users.forEach(u => {
+                    const row = document.createElement('div');
+                    row.className = 'user-row ' + (u.user_id === (this.currentUser && this.currentUser.user_id) ? 'active' : '');
+                    row.innerHTML = '<div><div style="font-weight:500;">' + (u.display_name || u.username) + '</div><div class="user-id">' + u.username + ' · ' + (u.role || 'user') + '</div></div><div class="btn-sm primary" data-user="' + u.user_id + '">切换</div>';
+                    row.querySelector('.btn-sm').onclick = async () => {
+                        const a2 = api();
+                        if (!a2 || !a2.setCurrentUser) return;
+                        const user = await a2.setCurrentUser(u.user_id);
+                        if (user) { this.currentUser = user; this.detailUserId = user.user_id; this.refreshUserProfile(); this.refreshUserList(); }
+                    };
+                    list.appendChild(row);
+                });
+                if (detail && this.detailUserId) {
+                    detail.classList.remove('hidden');
+                    const user = users.find(u => u.user_id === this.detailUserId);
+                    if (user) {
+                        document.getElementById('user-detail-title').textContent = '编辑用户：' + (user.display_name || user.username);
+                        document.getElementById('user-username').value = user.username || '';
+                        document.getElementById('user-display').value = user.display_name || '';
+                        document.getElementById('user-role').value = user.role || 'user';
+                        document.getElementById('user-password').value = '';
+                    }
+                }
+            },
+            openAddUser() {
+                const username = prompt('用户名');
+                if (!username) return;
+                const display = prompt('显示名称', username);
+                const password = prompt('密码', '');
+                const a = api();
+                if (!a || !a.createUser) return;
+                a.createUser(username, display || username, password || '', 'user').then(user => {
+                    this.currentUser = user;
+                    this.detailUserId = user.user_id;
+                    this.refreshUserProfile();
+                    this.refreshUserList();
+                }).catch(e => alert('创建失败：' + e));
+            },
+            async saveUserDetail() {
+                if (!this.detailUserId) return;
+                const username = document.getElementById('user-username').value;
+                const display = document.getElementById('user-display').value;
+                const role = document.getElementById('user-role').value;
+                const password = document.getElementById('user-password').value;
+                const updates = { display_name: display, role };
+                if (password) updates.password = password;
+                const a = api();
+                if (!a || !a.updateUser) return;
+                try {
+                    const user = await a.updateUser(this.detailUserId, updates);
+                    this.currentUser = user;
+                    this.refreshUserProfile();
+                    this.refreshUserList();
+                    alert('已保存');
+                } catch (e) { alert('保存失败：' + e); }
+            },
+            async deleteCurrentUser() {
+                if (!confirm('确定删除当前用户吗？')) return;
+                const a = api();
+                if (!a || !a.deleteUser || !this.detailUserId) return;
+                try { await a.deleteUser(this.detailUserId); this.detailUserId = null; this.currentUser = null; await this.refreshUserList(); this.refreshUserProfile(); }
+                catch (e) { alert('删除失败：' + e); }
+            },
+
+            refreshHistory() {
+                const list = document.getElementById('history-list');
+                if (!list) return;
+                if (!this.history.length) { list.innerHTML = '<div class="empty-tip">暂无历史记录</div>'; return; }
+                list.innerHTML = '';
+                this.history.slice().reverse().forEach(h => {
+                    const row = document.createElement('div');
+                    row.className = 'case-item';
+                    row.style.cursor = 'default';
+                    row.innerHTML = '<div><div style="font-weight:500;">' + (h.sender === 'user' ? '我' : 'AI') + ' · ' + h.time + '</div><div class="case-id">' + h.text.slice(0, 80) + (h.text.length > 80 ? '...' : '') + '</div></div>';
+                    list.appendChild(row);
+                });
+            },
+            generateReport() {
+                const list = document.getElementById('report-list');
+                if (!list) return;
+                const active = this.cases.find(c => c.case_id === this.activeCaseId);
+                if (!active) { list.innerHTML = '<div class="card"><div class="empty-tip">请先选择或创建案件</div></div>'; return; }
+                list.innerHTML = '<div class="card"><h3>案件摘要</h3><p>案件：' + active.title + '（' + active.case_id + '）</p><p>类型：' + active.case_type + '</p></div>';
+            },
+
+            alert(msg) { window.alert(msg); },
+
+            refreshUserProfile() {
+                const area = document.getElementById('user-area-name');
+                const badge = document.getElementById('user-area-badge');
+                const name = (this.currentUser && (this.currentUser.display_name || this.currentUser.username)) || '法律助手';
+                const role = (this.currentUser && this.currentUser.role) || 'local';
+                if (area) area.textContent = name;
+                if (badge) badge.textContent = role;
+                const a = api();
+                if (a && a.currentUser) a.currentUser().then(user => { this.currentUser = user; }).catch(() => {});
+            },
+            refreshSettingsForm() {
+                const a = api();
+                if (a && a.getSettings) {
+                    a.getSettings().then(s => this.setSettings(s)).catch(() => {});
+                } else {
+                    const defaults = Object.keys(this.settings).reduce((acc, key) => { acc[key] = false; return acc; }, {});
+                    this.setSettings(defaults);
+                }
+            },
+            getSettings() {
+                const a = api();
+                if (a && a.getSettings) return a.getSettings();
+                return Promise.resolve(this.settings);
+            }
+        };
+
+        window.app = app;
+
+        document.getElementById('chat-input').addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); app.sendChat(); }
+        });
+
+        document.addEventListener('click', function(e) {
+            const menu = document.getElementById('user-menu');
+            const area = document.getElementById('user-area');
+            if (menu && area && !area.contains(e.target) && !menu.contains(e.target)) app.closeUserMenu();
+        });
+    </script>
+</body>
+</html>

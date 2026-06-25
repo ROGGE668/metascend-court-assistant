@@ -1,0 +1,13 @@
+{
+  "identifier": "default",
+  "permissions": [
+    "core:default",
+    "core:window:default",
+    "core:app:default",
+    "core:event:default",
+    "core:resources:default",
+    "core:menu:default",
+    "core:tray:default",
+    "shell:default"
+  ]
+}

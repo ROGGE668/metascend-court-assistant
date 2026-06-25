@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metascend 庭审助手 · UI 设计原理图</title>
+    <style>
+        :root {
+            --bg: #0b1021;
+            --surface: #151c2e;
+            --surface-2: #1e293b;
+            --border: #334155;
+            --text: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent: #3b82f6;
+            --accent-glow: rgba(59, 130, 246, 0.25);
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --error: #ef4444;
+            --suggestion: #172554;
+            --radius: 16px;
+            --radius-sm: 10px;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Heiti SC", "Segoe UI", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+        .gradient-orb {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(120px);
+            opacity: 0.35;
+            z-index: 0;
+            pointer-events: none;
+        }
+        .orb-1 { width: 500px; height: 500px; background: var(--accent); top: -150px; right: -100px; }
+        .orb-2 { width: 400px; height: 400px; background: #8b5cf6; bottom: -100px; left: -100px; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 60px 24px; position: relative; z-index: 1; }
+        header { text-align: center; margin-bottom: 60px; }
+        .badge {
+            display: inline-flex; align-items: center; gap: 8px;
+            padding: 6px 14px; border-radius: 999px;
+            background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.25);
+            color: #60a5fa; font-size: 13px; margin-bottom: 20px;
+        }
+        h1 { font-size: 42px; font-weight: 700; letter-spacing: -0.5px; margin-bottom: 12px; }
+        .subtitle { color: var(--text-muted); font-size: 18px; max-width: 600px; margin: 0 auto; }
+        .section { margin-bottom: 70px; }
+        .section-title {
+            font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px;
+            color: var(--accent); margin-bottom: 8px;
+        }
+        .section h2 { font-size: 28px; font-weight: 600; margin-bottom: 24px; }
+
+        /* Mockup */
+        .mockup-stage {
+            display: flex; justify-content: center; margin-bottom: 40px;
+        }
+        .subtitle-window {
+            width: 720px; max-width: 100%;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            box-shadow: 0 32px 100px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.04), inset 0 1px 0 rgba(255,255,255,0.06);
+            overflow: hidden;
+            position: relative;
+        }
+        .title-bar {
+            height: 46px; display: flex; align-items: center;
+            padding: 0 16px 0 20px; border-bottom: 1px solid rgba(51,65,85,0.5);
+            background: rgba(15, 23, 42, 0.6);
+        }
+        .status { display: flex; align-items: center; gap: 8px; margin-right: 18px; }
+        .status-dot { color: var(--success); font-size: 13px; animation: pulse 1.4s ease-in-out infinite; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
+        .status-text { font-size: 14px; font-weight: 500; }
+        .win-title { flex: 1; font-size: 14px; color: var(--text-muted); }
+        .win-controls { display: flex; gap: 6px; }
+        .win-btn { padding: 4px 10px; border-radius: 6px; font-size: 13px; color: var(--text-muted); background: rgba(255,255,255,0.03); }
+        .transcript-wrap {
+            margin: 14px; background: var(--surface-2); border-radius: var(--radius-sm);
+            min-height: 140px; padding: 14px;
+        }
+        .transcript-header { font-size: 11px; color: var(--text-muted); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .line { font-size: 15px; margin-bottom: 8px; }
+        .role { color: var(--accent); font-weight: 600; margin-right: 6px; }
+        .suggestion {
+            margin: 0 14px 14px; background: var(--suggestion); border: 1px solid var(--accent);
+            border-radius: var(--radius-sm); padding: 14px;
+        }
+        .suggestion-header { font-size: 11px; color: #60a5fa; text-transform: uppercase; margin-bottom: 6px; }
+        .suggestion-body { font-size: 14px; color: #dbeafe; }
+        .footer { display: flex; justify-content: space-between; padding: 0 18px 14px; font-size: 11px; color: #475569; }
+
+        /* Annotations */
+        .annotation {
+            position: absolute; width: 24px; height: 24px; border-radius: 50%;
+            background: var(--accent); color: white; font-size: 12px; font-weight: 700;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 0 0 4px var(--accent-glow), 0 4px 12px rgba(0,0,0,0.3);
+            animation: float 3s ease-in-out infinite;
+            cursor: help;
+        }
+        @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-4px)} }
+        .a1 { top: 12px; left: 18px; }
+        .a2 { top: 12px; right: 110px; }
+        .a3 { top: 70px; right: 24px; }
+        .a4 { top: 110px; left: 30px; }
+        .a5 { top: 210px; left: 30px; }
+        .a6 { bottom: 58px; left: 30px; }
+        .a7 { bottom: 18px; left: 30px; }
+        .a8 { bottom: 18px; right: 30px; }
+
+        .annotation-cards {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px;
+        }
+        .anno-card {
+            background: rgba(30, 41, 59, 0.6); border: 1px solid var(--border);
+            border-radius: var(--radius-sm); padding: 16px;
+            backdrop-filter: blur(10px);
+        }
+        .anno-card .num {
+            display: inline-flex; width: 22px; height: 22px; border-radius: 50%;
+            background: var(--accent); color: white; font-size: 12px; font-weight: 700;
+            align-items: center; justify-content: center; margin-right: 8px;
+        }
+        .anno-card h4 { font-size: 14px; margin-bottom: 4px; }
+        .anno-card p { font-size: 13px; color: var(--text-muted); }
+
+        /* Design tokens */
+        .token-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px;
+        }
+        .token-card {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: var(--radius-sm); padding: 20px;
+        }
+        .token-card h3 { font-size: 14px; color: var(--text-muted); margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .color-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+        .swatch { width: 36px; height: 36px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); }
+        .color-info { font-size: 13px; }
+        .color-info .hex { color: var(--text-muted); font-size: 12px; }
+        .type-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 13px; }
+        .type-row:last-child { border-bottom: none; }
+
+        /* States */
+        .states-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px;
+        }
+        .state-card {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: var(--radius-sm); padding: 18px;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+        .state-card:hover { transform: translateY(-4px); border-color: var(--accent); }
+        .state-dot { font-size: 14px; margin-right: 6px; }
+        .state-card h4 { font-size: 15px; margin-bottom: 6px; }
+        .state-card p { font-size: 13px; color: var(--text-muted); }
+
+        /* Flow */
+        .flow {
+            display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+        }
+        .flow-step {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: var(--radius-sm); padding: 14px 18px; font-size: 14px;
+        }
+        .flow-arrow { color: var(--accent); font-size: 20px; }
+
+        footer { text-align: center; padding: 40px 0; color: var(--text-muted); font-size: 13px; border-top: 1px solid var(--border); margin-top: 40px; }
+    </style>
+</head>
+<body>
+    <div class="gradient-orb orb-1"></div>
+    <div class="gradient-orb orb-2"></div>
+
+    <div class="container">
+        <header>
+            <div class="badge">⚖️ 产品 UI 设计原理图</div>
+            <h1>Metascend 庭审助手</h1>
+            <p class="subtitle">本地优先、实时语音辅助系统的桌面端界面设计规范与交互蓝图</p>
+        </header>
+
+        <section class="section">
+            <div class="section-title">Interface Mockup</div>
+            <h2>主界面原型与标注</h2>
+            <div class="mockup-stage">
+                <div class="subtitle-window">
+                    <div class="annotation a1" title="状态指示器">1</div>
+                    <div class="annotation a2" title="静音控制">2</div>
+                    <div class="annotation a3" title="窗口控制">3</div>
+                    <div class="annotation a4" title="标题栏 / 拖拽区">4</div>
+                    <div class="annotation a5" title="实时转写区">5</div>
+                    <div class="annotation a6" title="法律提示卡片">6</div>
+                    <div class="annotation a7" title="延迟指标">7</div>
+                    <div class="annotation a8" title="免责声明">8</div>
+
+                    <div class="title-bar">
+                        <div class="status">
+                            <span class="status-dot">●</span>
+                            <span class="status-text">监听中</span>
+                        </div>
+                        <div class="win-title">Metascend 庭审助手</div>
+                        <div class="win-controls">
+                            <div class="win-btn">🔇 静音</div>
+                            <div class="win-btn">—</div>
+                            <div class="win-btn">×</div>
+                        </div>
+                    </div>
+                    <div class="transcript-wrap">
+                        <div class="transcript-header">实时转写</div>
+                        <div class="transcript">
+                            <div class="line"><span class="role">[法官]</span>原告，请陈述你的诉讼请求。</div>
+                            <div class="line"><span class="role">[己方]</span>请求判令被告偿还借款本金十万元及利息。</div>
+                            <div class="line"><span class="role">[对方]</span>这笔借款我已经通过现金还清了。</div>
+                        </div>
+                    </div>
+                    <div class="suggestion">
+                        <div class="suggestion-header">法律提示</div>
+                        <div class="suggestion-body">要求被告说明还款时间、地点、金额细节，并主张举证责任在被告。</div>
+                    </div>
+                    <div class="footer">
+                        <span>识别耗时 280ms，平均 265ms</span>
+                        <span>仅供参考，不构成法律意见 · 按 M 静音 · Q 退出</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="annotation-cards">
+                <div class="anno-card"><span class="num">1</span><h4>状态指示灯</h4><p>呼吸动画圆点，绿=监听、橙=处理、红=错误，零文字即可感知运行状态。</p></div>
+                <div class="anno-card"><span class="num">2</span><h4>一键静音</h4><p>点击或按 M 切换，静音后法律提示卡片叠加半透明蒙层并标注 [已静音]。</p></div>
+                <div class="anno-card"><span class="num">3</span><h4>窗口控制</h4><p>最小化到 Dock 角标、关闭退出；悬浮窗始终置顶，不被其他窗口遮挡。</p></div>
+                <div class="anno-card"><span class="num">4</span><h4>拖拽标题栏</h4><p>整个标题栏可拖拽移动；按住左键拖动即可调整浮窗位置。</p></div>
+                <div class="anno-card"><span class="num">5</span><span class="num">6</span><h4>转写区 + 提示卡</h4><p>转写按 [角色] 前缀展示；下方蓝色卡片输出法律依据与应对策略。</p></div>
+                <div class="anno-card"><span class="num">7</span><span class="num">8</span><h4>指标 + 免责声明</h4><p>实时 ASR 延迟；底部常驻法律免责声明，符合合规要求。</p></div>
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="section-title">Design System</div>
+            <h2>设计系统</h2>
+            <div class="token-grid">
+                <div class="token-card">
+                    <h3>Colors</h3>
+                    <div class="color-row"><div class="swatch" style="background:#0f172a"></div><div class="color-info">背景<div class="hex">#0f172a</div></div></div>
+                    <div class="color-row"><div class="swatch" style="background:#1e293b"></div><div class="color-info">卡片<div class="hex">#1e293b</div></div></div>
+                    <div class="color-row"><div class="swatch" style="background:#3b82f6"></div><div class="color-info">强调色<div class="hex">#3b82f6</div></div></div>
+                    <div class="color-row"><div class="swatch" style="background:#22c55e"></div><div class="color-info">成功 / 监听<div class="hex">#22c55e</div></div></div>
+                    <div class="color-row"><div class="swatch" style="background:#f59e0b"></div><div class="color-info">警告 / 处理<div class="hex">#f59e0b</div></div></div>
+                </div>
+                <div class="token-card">
+                    <h3>Typography</h3>
+                    <div class="type-row"><span>窗口标题</span><span>PingFang SC 14px</span></div>
+                    <div class="type-row"><span>转写正文</span><span>PingFang SC 17px</span></div>
+                    <div class="type-row"><span>法律提示</span><span>PingFang SC 14px</span></div>
+                    <div class="type-row"><span>状态文字</span><span>PingFang SC 14px Medium</span></div>
+                    <div class="type-row"><span>延迟 / 免责</span><span>SF Mono / PingFang 11-12px</span></div>
+                </div>
+                <div class="token-card">
+                    <h3>Spacing & Radius</h3>
+                    <div class="type-row"><span>窗口圆角</span><span>16px</span></div>
+                    <div class="type-row"><span>卡片圆角</span><span>10px</span></div>
+                    <div class="type-row"><span>内容边距</span><span>14px</span></div>
+                    <div class="type-row"><span>元素间距</span><span>8-12px</span></div>
+                    <div class="type-row"><span>默认宽度</span><span>980px (min 600px)</span></div>
+                </div>
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="section-title">Component States</div>
+            <h2>组件状态</h2>
+            <div class="states-grid">
+                <div class="state-card"><span class="state-dot" style="color:var(--warning)">●</span><h4>待机 Idle</h4><p>尚未检测到有效语音，状态灯琥珀色慢闪，提示“等待庭审发言”。</p></div>
+                <div class="state-card"><span class="state-dot" style="color:var(--success)">●</span><h4>监听 Listening</h4><p>VAD 检测到语音，转写区滚动追加文本，法律提示同步更新。</p></div>
+                <div class="state-card"><span class="state-dot" style="color:var(--warning)">●</span><h4>处理 Processing</h4><p>ASR 或法律推理中，状态灯橙色快闪，转写区显示“识别中...”。</p></div>
+                <div class="state-card"><span class="state-dot" style="color:var(--error)">●</span><h4>错误 Error</h4><p>麦克风未授权或模型加载失败，红色状态灯，提示用户重启。</p></div>
+            </div>
+        </section>
+
+        <section class="section">
+            <div class="section-title">Interaction Flow</div>
+            <h2>交互流程</h2>
+            <div class="flow">
+                <div class="flow-step">启动 App</div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step">请求麦克风权限</div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step">加载 ASR 模型</div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step">浮窗置顶显示</div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step">实时转写 + 法律提示</div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step">用户静音 / 关闭</div>
+            </div>
+        </section>
+
+        <footer>
+            Metascend Court Assistant · UI Design Schematic · 本地优先 · 实时语音辅助
+        </footer>
+    </div>
+</body>
+</html>
