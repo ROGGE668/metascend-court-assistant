@@ -1,31 +1,14 @@
+mod sidecar;
+
 use reqwest;
 use serde_json::{json, Value};
-use std::path::PathBuf;
-use std::process::{Child, Command, Stdio};
-use tauri::Manager;
-use std::sync::Mutex;
 use tauri::State;
+use tauri::Manager;
+use sidecar::SidecarManager;
+use std::sync::Arc;
 
 pub struct AppState {
-  pub backend_url: String,
-  pub backend_child: Mutex<Option<Child>>,
-}
-
-impl Default for AppState {
-  fn default() -> Self {
-    Self {
-      backend_url: String::from("http://127.0.0.1:8727"),
-      backend_child: Mutex::new(None),
-    }
-  }
-}
-
-fn project_root() -> PathBuf {
-  PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-    .parent()
-    .and_then(|p| p.parent())
-    .map(|p| p.to_path_buf())
-    .unwrap_or_else(|| std::env::current_dir().unwrap_or_default())
+  pub sidecar: Arc<SidecarManager>,
 }
 
 #[tauri::command]
@@ -34,7 +17,7 @@ fn open_url(url: String) -> Result<(), String> {
 }
 
 async fn api_get(state: State<'_, AppState>, path: &str) -> Result<Value, String> {
-  let url = format!("{}{}", state.backend_url, path);
+  let url = format!("{}{}", state.sidecar.clone().backend_url().await, path);
   reqwest::get(&url)
     .await
     .map_err(|e| e.to_string())?
@@ -44,7 +27,7 @@ async fn api_get(state: State<'_, AppState>, path: &str) -> Result<Value, String
 }
 
 async fn api_post(state: State<'_, AppState>, path: &str, body: Value) -> Result<Value, String> {
-  let url = format!("{}{}", state.backend_url, path);
+  let url = format!("{}{}", state.sidecar.clone().backend_url().await, path);
   reqwest::Client::new()
     .post(&url)
     .json(&body)
@@ -127,7 +110,7 @@ async fn import_evidence(source_path: String, state: State<'_, AppState>) -> Res
 
 #[tauri::command]
 async fn delete_evidence(name: String, state: State<'_, AppState>) -> Result<Value, String> {
-  let url = format!("{}/evidence/{}", state.backend_url, name);
+  let url = format!("{}/evidence/{}", state.sidecar.clone().backend_url().await, name);
   reqwest::Client::new()
     .delete(&url)
     .send()
@@ -180,45 +163,26 @@ async fn save_settings(toggles: Value, state: State<'_, AppState>) -> Result<Val
 // ------------------------------------------------------------------ //
 // Backend lifecycle
 // ------------------------------------------------------------------ //
-fn wait_for_backend(url: &str) -> Result<(), String> {
-  for _ in 0..40 {
-    if let Ok(resp) = reqwest::blocking::get(format!("{}/health", url)) {
-      if resp.status().is_success() {
-        return Ok(());
-      }
-    }
-    std::thread::sleep(std::time::Duration::from_millis(250));
-  }
-  Err("Python backend did not become ready".into())
-}
-
-fn spawn_backend() -> Result<Child, String> {
-  let root = project_root();
-  Command::new("uv")
-    .args(["run", "metascend-api"])
-    .current_dir(&root)
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
-    .spawn()
-    .map_err(|e| format!("Failed to spawn backend: {}", e))
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
     .plugin(tauri_plugin_shell::init())
     .plugin(tauri_plugin_dialog::init())
-    .manage(AppState::default())
     .setup(|app| {
-      let state = app.state::<AppState>();
-      let child = spawn_backend()?;
-      *state.backend_child.lock().unwrap() = Some(child);
-      let url = state.backend_url.clone();
-      std::thread::spawn(move || {
-        if let Err(e) = wait_for_backend(&url) {
+      let app_data_dir = app.path().app_data_dir()?;
+      let log_dir = app_data_dir.join("logs");
+      std::fs::create_dir_all(&log_dir)?;
+      let log_path = log_dir.join("backend.log");
+
+      let sidecar = SidecarManager::new(8727, log_path);
+      let sidecar_clone = sidecar.clone();
+      tauri::async_runtime::spawn(async move {
+        if let Err(e) = SidecarManager::start(sidecar_clone).await {
           eprintln!("Backend readiness check failed: {}", e);
         }
       });
+
+      app.manage(AppState { sidecar });
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![
@@ -243,6 +207,18 @@ pub fn run() {
       get_settings,
       save_settings
     ])
-    .run(tauri::generate_context!())
-    .expect("error while running tauri application");
+    .build(tauri::generate_context!())
+    .expect("error while building tauri application")
+    .run(|app_handle: &tauri::AppHandle, event| {
+      if let tauri::RunEvent::ExitRequested { api, .. } = event {
+        let app_handle = app_handle.clone();
+        tauri::async_runtime::spawn(async move {
+          if let Some(state) = app_handle.try_state::<AppState>() {
+            let _ = state.sidecar.clone().stop().await;
+          }
+          app_handle.exit(0);
+        });
+        api.prevent_exit();
+      }
+    });
 }

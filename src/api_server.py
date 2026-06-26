@@ -290,7 +290,9 @@ def main() -> int:
     import uvicorn
 
     configure_logging()
-    port = int(os.getenv("METASCEND_API_PORT", "8727"))
+    # Rust sidecar passes the chosen port via METASCEND_PORT; fall back to the
+    # legacy METASCEND_API_PORT / .env value for standalone runs.
+    port = int(os.getenv("METASCEND_PORT") or os.getenv("METASCEND_API_PORT", "8727"))
     host = os.getenv("METASCEND_API_HOST", "127.0.0.1")
     app = create_app()
     uvicorn.run(app, host=host, port=port, log_level=Config.LOG_LEVEL.lower())
