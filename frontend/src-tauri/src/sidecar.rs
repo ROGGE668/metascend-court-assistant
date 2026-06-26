@@ -317,9 +317,73 @@ fn send_signal(pid: i32, signal: nix::sys::signal::Signal) -> Result<(), String>
 }
 
 fn project_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default())
+    // Development builds launched via cargo: CARGO_MANIFEST_DIR is
+    // frontend/src-tauri, so the project root is two levels up.
+    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+        let path = PathBuf::from(manifest_dir);
+        if let Some(root) = path.parent().and_then(|p| p.parent()) {
+            return root.to_path_buf();
+        }
+    }
+
+    // Release .app: search upward from the executable for project markers
+    // (pyproject.toml or src/api_server.py). This lets the bundled app find
+    // the Python project as long as the .app is placed inside the repo.
+    if let Ok(exe) = std::env::current_exe() {
+        let mut dir = exe.parent();
+        while let Some(d) = dir {
+            if d.join("pyproject.toml").exists() || d.join("src").join("api_server.py").exists() {
+                return d.to_path_buf();
+            }
+            dir = d.parent();
+        }
+    }
+
+    std::env::current_dir().unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+    use tokio::time::timeout;
+
+    #[test]
+    fn project_root_returns_valid_path() {
+        let root = project_root();
+        assert!(
+            root.join("pyproject.toml").exists() || root.join("src").join("api_server.py").exists(),
+            "project_root should point to the repository root: {:?}",
+            root
+        );
+    }
+
+    #[tokio::test]
+    #[ignore = "spawns Python and loads models; run manually with cargo test -- --ignored"]
+    async fn sidecar_manager_starts_python_backend() {
+        let port = 8730;
+        let log_dir = std::env::temp_dir().join(format!("metascend-test-logs-{}", port));
+        let _ = std::fs::remove_dir_all(&log_dir);
+        std::fs::create_dir_all(&log_dir).unwrap();
+        let log_path = log_dir.join("backend.log");
+
+        let manager = SidecarManager::new(port, log_path);
+        SidecarManager::start(manager.clone()).await.expect("start failed");
+
+        let url = manager.clone().backend_url().await;
+        let health = timeout(Duration::from_secs(60), async {
+            loop {
+                if let Ok(resp) = reqwest::get(format!("{}/health", url)).await {
+                    if resp.status().is_success() {
+                        break;
+                    }
+                }
+                sleep(Duration::from_millis(250)).await;
+            }
+        })
+        .await;
+        assert!(health.is_ok(), "backend did not become healthy within 60s");
+
+        manager.stop().await.expect("stop failed");
+    }
 }
