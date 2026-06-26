@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { open } from '@tauri-apps/plugin-dialog'
 
 type Document = {
   id: string
@@ -8,9 +9,18 @@ type Document = {
   status: string
   chunks: number
   date: string
+  path?: string
 }
 
-const categories = ['全部', '民法典', '民事诉讼法', '司法解释', '指导案例', '借贷纠纷', '离婚纠纷', '劳动纠纷']
+type DocContent = {
+  type: 'text' | 'media'
+  format: string
+  content?: string
+  path?: string
+  note?: string
+}
+
+const categories = ['全部', '民法典', '民事诉讼法', '司法解释', '指导案例', '借贷纠纷', '离婚纠纷', '劳动纠纷', '其他']
 
 export default function KnowledgePage() {
   const [docs, setDocs] = useState<Document[]>([])
@@ -18,7 +28,9 @@ export default function KnowledgePage() {
   const [category, setCategory] = useState('全部')
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
+  const [importing, setImporting] = useState(false)
   const [error, setError] = useState('')
+  const [detail, setDetail] = useState<{ doc: Document; content: DocContent } | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -70,8 +82,55 @@ export default function KnowledgePage() {
           date: '-',
         }))
       )
+      setError('')
     } catch (e) {
       setError('搜索失败：' + String(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleImport = async () => {
+    try {
+      const sourcePath = await open({ multiple: false, directory: false })
+      if (!sourcePath || Array.isArray(sourcePath)) return
+
+      const defaultCategory = category !== '全部' ? category : '其他'
+      const chosen = window.prompt(
+        `请选择分类（默认：${defaultCategory}）\n支持 .json / .yaml / .pdf / 图片`,
+        defaultCategory
+      )
+      if (!chosen) return
+
+      setImporting(true)
+      setError('')
+      await invoke('import_knowledge_document', {
+        sourcePath,
+        category: chosen.trim() || defaultCategory,
+      })
+      await load()
+    } catch (e) {
+      setError('导入失败：' + String(e))
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  const handleDetail = async (doc: Document) => {
+    if (!doc.path) {
+      setDetail({
+        doc,
+        content: { type: 'text', format: 'builtin', content: '这是内置示例文档，没有本地源文件。' },
+      })
+      return
+    }
+    setLoading(true)
+    try {
+      const content = await invoke<DocContent>('get_knowledge_document', { path: doc.path })
+      setDetail({ doc, content })
+      setError('')
+    } catch (e) {
+      setError('读取详情失败：' + String(e))
     } finally {
       setLoading(false)
     }
@@ -105,20 +164,13 @@ export default function KnowledgePage() {
           <h1 className="text-xl font-semibold tracking-tight">本地向量知识库</h1>
           <p className="mt-1 text-sm text-[#6e6e73]">法律法条、司法解释与指导案例的本地向量索引，离线可用。</p>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={load}
-            className="rounded-full border border-[#e5e5e7]/60 px-4 py-1.5 text-sm hover:bg-black/5 transition-all"
-          >
-            📥 批量导入
-          </button>
-          <button
-            onClick={load}
-            className="rounded-full bg-[#0071e3] px-4 py-1.5 text-sm text-white hover:bg-[#005bbf] transition-all"
-          >
-            + 添加文档
-          </button>
-        </div>
+        <button
+          onClick={handleImport}
+          disabled={importing}
+          className="rounded-full bg-[#0071e3] px-4 py-1.5 text-sm text-white hover:bg-[#005bbf] transition-all disabled:opacity-50"
+        >
+          {importing ? '导入中…' : '+ 导入文档'}
+        </button>
       </div>
 
       {error && (
@@ -175,9 +227,10 @@ export default function KnowledgePage() {
             />
             <button
               onClick={handleSearch}
-              className="rounded-full bg-[#0071e3] px-3 py-1.5 text-xs text-white hover:bg-[#005bbf] transition-all"
+              disabled={loading}
+              className="rounded-full bg-[#0071e3] px-3 py-1.5 text-xs text-white hover:bg-[#005bbf] transition-all disabled:opacity-50"
             >
-              搜索
+              {loading ? '…' : '搜索'}
             </button>
           </div>
         </div>
@@ -196,7 +249,12 @@ export default function KnowledgePage() {
                 <span className={'h-1.5 w-1.5 rounded-full ' + dotClass(doc.status)} />
                 {doc.status}
               </span>
-              <button className="rounded-full border border-[#e5e5e7]/60 px-3 py-1 text-xs text-[#6e6e73] hover:bg-black/5 transition-all hover:bg-[#f5f5f7]">详情</button>
+              <button
+                onClick={() => handleDetail(doc)}
+                className="rounded-full border border-[#e5e5e7]/60 px-3 py-1 text-xs text-[#6e6e73] hover:bg-black/5 transition-all hover:bg-[#f5f5f7]"
+              >
+                详情
+              </button>
             </div>
           ))}
           {filtered.length === 0 && !loading && (
@@ -209,6 +267,40 @@ export default function KnowledgePage() {
         <span>向量检索后端：ChromaDB · 嵌入模型：BAAI/bge-large-zh-v1.5</span>
         <span>存储路径：~/.cache/metascend/knowledge_base</span>
       </div>
+
+      {detail && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="max-h-[80vh] w-full max-w-2xl overflow-auto rounded-2xl border border-[#e5e5e7] bg-white p-6 shadow-xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-base font-semibold">{detail.doc.name}</h3>
+                <p className="mt-1 text-xs text-[#6e6e73]">
+                  分类：{detail.doc.category} · 状态：{detail.doc.status}
+                </p>
+              </div>
+              <button
+                onClick={() => setDetail(null)}
+                className="rounded-full border border-[#e5e5e7] px-3 py-1 text-xs hover:bg-black/5"
+              >
+                关闭
+              </button>
+            </div>
+            <div className="mt-4 rounded-lg border border-[#e5e5e7] bg-[#f9fafb] p-4">
+              {detail.content.type === 'text' ? (
+                <pre className="whitespace-pre-wrap text-sm text-[#1d1d1f] font-mono">
+                  {detail.content.content}
+                </pre>
+              ) : (
+                <div className="text-sm text-[#6e6e73]">
+                  <p>文件格式：{detail.content.format}</p>
+                  <p className="mt-1 break-all">路径：{detail.content.path}</p>
+                  <p className="mt-2 text-[#f59e0b]">{detail.content.note}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

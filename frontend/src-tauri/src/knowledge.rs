@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tokio::fs;
@@ -14,6 +15,8 @@ pub struct KnowledgeDoc {
     pub status: String,
     pub chunks: i64,
     pub date: String,
+    /// Absolute path to the source file on disk. Built-in documents have `None`.
+    pub path: Option<String>,
 }
 
 /// Rust-side metadata manager for the legal knowledge base.
@@ -60,6 +63,62 @@ impl KnowledgeStore {
         Ok(docs)
     }
 
+    /// Copy an external file into the knowledge base directory and return its metadata.
+    pub async fn import_file(&self, source_path: String, category: String) -> Result<KnowledgeDoc, String> {
+        let src = PathBuf::from(source_path);
+        let file_name = src
+            .file_name()
+            .ok_or("invalid source path")?
+            .to_string_lossy()
+            .to_string();
+        let dest_dir = self.base_dir.join(&category);
+        fs::create_dir_all(&dest_dir)
+            .await
+            .map_err(|e| format!("failed to create category directory: {}", e))?;
+        let dest = dest_dir.join(&file_name);
+        fs::copy(&src, &dest)
+            .await
+            .map_err(|e| format!("failed to copy knowledge file: {}", e))?;
+        Ok(KnowledgeDoc {
+            id: String::new(),
+            name: file_name,
+            category,
+            status: "已加载".to_string(),
+            chunks: 1,
+            date: "-".to_string(),
+            path: Some(dest.to_string_lossy().to_string()),
+        })
+    }
+
+    /// Read the raw content of a knowledge document for the detail view.
+    pub async fn get_document_content(&self, path: String) -> Result<Value, String> {
+        let file_path = PathBuf::from(path);
+        let suffix = file_path
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        match suffix.as_str() {
+            "json" | "yaml" | "yml" => {
+                let text = fs::read_to_string(&file_path).await.map_err(|e| e.to_string())?;
+                Ok(json!({
+                    "type": "text",
+                    "format": suffix,
+                    "content": text,
+                }))
+            }
+            "pdf" | "png" | "jpg" | "jpeg" | "tif" | "tiff" | "bmp" | "gif" | "webp" => {
+                Ok(json!({
+                    "type": "media",
+                    "format": suffix,
+                    "path": file_path.to_string_lossy().to_string(),
+                    "note": "媒体文件内容需要 OCR 解析，当前版本仅显示元数据。",
+                }))
+            }
+            _ => Err(format!("unsupported file type: {}", suffix)),
+        }
+    }
+
     async fn load_from_disk(&self) -> Result<Vec<KnowledgeDoc>, String> {
         let mut docs = Vec::new();
         let mut dir = fs::read_dir(&self.base_dir)
@@ -76,11 +135,12 @@ impl KnowledgeStore {
                 .and_then(|s| s.to_str())
                 .unwrap_or("")
                 .to_lowercase();
+            let path_str = path.to_string_lossy().to_string();
             match suffix.as_str() {
-                "json" => self.load_json(&path, &mut docs).await?,
-                "yaml" | "yml" => self.load_yaml(&path, &mut docs).await?,
+                "json" => self.load_json(&path, &path_str, &mut docs).await?,
+                "yaml" | "yml" => self.load_yaml(&path, &path_str, &mut docs).await?,
                 "pdf" | "png" | "jpg" | "jpeg" | "tif" | "tiff" | "bmp" | "gif" | "webp" => {
-                    self.load_media(&path, &mut docs).await?
+                    self.load_media(&path, &path_str, &mut docs).await?
                 }
                 _ => continue,
             }
@@ -94,25 +154,29 @@ impl KnowledgeStore {
         Ok(docs)
     }
 
-    async fn load_json(&self, path: &PathBuf, docs: &mut Vec<KnowledgeDoc>) -> Result<(), String> {
+    async fn load_json(&self, path: &PathBuf, path_str: &str, docs: &mut Vec<KnowledgeDoc>) -> Result<(), String> {
         let text = fs::read_to_string(path).await.map_err(|e| e.to_string())?;
         let raw_docs: Vec<RawDoc> = serde_json::from_str(&text).map_err(|e| e.to_string())?;
         for raw in raw_docs {
-            docs.push(raw.into());
+            let mut doc: KnowledgeDoc = raw.into();
+            doc.path = Some(path_str.to_string());
+            docs.push(doc);
         }
         Ok(())
     }
 
-    async fn load_yaml(&self, path: &PathBuf, docs: &mut Vec<KnowledgeDoc>) -> Result<(), String> {
+    async fn load_yaml(&self, path: &PathBuf, path_str: &str, docs: &mut Vec<KnowledgeDoc>) -> Result<(), String> {
         let text = fs::read_to_string(path).await.map_err(|e| e.to_string())?;
         let raw_docs: Vec<RawDoc> = serde_yaml::from_str(&text).map_err(|e| e.to_string())?;
         for raw in raw_docs {
-            docs.push(raw.into());
+            let mut doc: KnowledgeDoc = raw.into();
+            doc.path = Some(path_str.to_string());
+            docs.push(doc);
         }
         Ok(())
     }
 
-    async fn load_media(&self, path: &PathBuf, docs: &mut Vec<KnowledgeDoc>) -> Result<(), String> {
+    async fn load_media(&self, path: &PathBuf, path_str: &str, docs: &mut Vec<KnowledgeDoc>) -> Result<(), String> {
         let name = path
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
@@ -124,6 +188,7 @@ impl KnowledgeStore {
             status: "已加载".to_string(),
             chunks: 1,
             date: "-".to_string(),
+            path: Some(path_str.to_string()),
         });
         Ok(())
     }
@@ -149,6 +214,7 @@ impl From<RawDoc> for KnowledgeDoc {
             status: "已加载".to_string(),
             chunks: 1,
             date: "-".to_string(),
+            path: None,
         }
     }
 }
@@ -162,6 +228,7 @@ fn built_in_documents() -> Vec<KnowledgeDoc> {
             status: "已加载".to_string(),
             chunks: 1,
             date: "-".to_string(),
+            path: None,
         },
         KnowledgeDoc {
             id: "doc_1".to_string(),
@@ -170,6 +237,7 @@ fn built_in_documents() -> Vec<KnowledgeDoc> {
             status: "已加载".to_string(),
             chunks: 1,
             date: "-".to_string(),
+            path: None,
         },
         KnowledgeDoc {
             id: "doc_2".to_string(),
@@ -178,6 +246,7 @@ fn built_in_documents() -> Vec<KnowledgeDoc> {
             status: "已加载".to_string(),
             chunks: 1,
             date: "-".to_string(),
+            path: None,
         },
         KnowledgeDoc {
             id: "doc_3".to_string(),
@@ -186,6 +255,7 @@ fn built_in_documents() -> Vec<KnowledgeDoc> {
             status: "已加载".to_string(),
             chunks: 1,
             date: "-".to_string(),
+            path: None,
         },
         KnowledgeDoc {
             id: "doc_4".to_string(),
@@ -194,6 +264,7 @@ fn built_in_documents() -> Vec<KnowledgeDoc> {
             status: "已加载".to_string(),
             chunks: 1,
             date: "-".to_string(),
+            path: None,
         },
         KnowledgeDoc {
             id: "doc_5".to_string(),
@@ -202,6 +273,7 @@ fn built_in_documents() -> Vec<KnowledgeDoc> {
             status: "已加载".to_string(),
             chunks: 1,
             date: "-".to_string(),
+            path: None,
         },
         KnowledgeDoc {
             id: "doc_6".to_string(),
@@ -210,6 +282,7 @@ fn built_in_documents() -> Vec<KnowledgeDoc> {
             status: "已加载".to_string(),
             chunks: 1,
             date: "-".to_string(),
+            path: None,
         },
         KnowledgeDoc {
             id: "doc_7".to_string(),
@@ -218,6 +291,7 @@ fn built_in_documents() -> Vec<KnowledgeDoc> {
             status: "已加载".to_string(),
             chunks: 1,
             date: "-".to_string(),
+            path: None,
         },
     ]
 }
@@ -282,6 +356,39 @@ mod tests {
         let docs = store.list_documents().await.unwrap();
         assert_eq!(docs.len(), 1);
         assert_eq!(docs[0].name, "scan");
+
+        let _ = fs::remove_dir_all(&dir).await;
+    }
+
+    #[tokio::test]
+    async fn knowledge_store_imports_file() {
+        let dir = std::env::temp_dir().join(format!(
+            "metascend-knowledge-import-test-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir).await;
+        fs::create_dir_all(&dir).await.unwrap();
+
+        let source = dir.join("source.json");
+        fs::write(&source, r#"[{"law": "导入测试", "case_type": "测试"}]"#)
+            .await
+            .unwrap();
+
+        let store = KnowledgeStore::new(dir.join("kb")).await;
+        let doc = store
+            .import_file(source.to_string_lossy().to_string(), "民法典".to_string())
+            .await
+            .unwrap();
+        assert_eq!(doc.name, "source.json");
+        assert_eq!(doc.category, "民法典");
+        assert!(doc.path.as_ref().unwrap().contains("民法典/source.json"));
+
+        let content = store
+            .get_document_content(doc.path.unwrap())
+            .await
+            .unwrap();
+        assert_eq!(content["type"], "text");
+        assert!(content["content"].as_str().unwrap().contains("导入测试"));
 
         let _ = fs::remove_dir_all(&dir).await;
     }

@@ -177,6 +177,28 @@ async fn save_settings(toggles: Value, state: State<'_, AppState>) -> Result<Val
 }
 
 // ------------------------------------------------------------------ //
+// Knowledge base import / detail
+// ------------------------------------------------------------------ //
+#[tauri::command]
+async fn import_knowledge_document(source_path: String, category: String, state: State<'_, AppState>) -> Result<Value, String> {
+  let doc = state.knowledge_store.import_file(source_path, category).await?;
+  Ok(json!({
+    "id": doc.id,
+    "name": doc.name,
+    "category": doc.category,
+    "status": doc.status,
+    "chunks": doc.chunks,
+    "date": doc.date,
+    "path": doc.path,
+  }))
+}
+
+#[tauri::command]
+async fn get_knowledge_document(path: String, state: State<'_, AppState>) -> Result<Value, String> {
+  state.knowledge_store.get_document_content(path).await
+}
+
+// ------------------------------------------------------------------ //
 // Backend lifecycle
 // ------------------------------------------------------------------ //
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -229,6 +251,8 @@ pub fn run() {
       delete_evidence,
       list_documents,
       search_documents,
+      import_knowledge_document,
+      get_knowledge_document,
       chat_ask,
       chat_messages,
       get_settings,
