@@ -1,14 +1,18 @@
 mod sidecar;
+mod store;
 
 use reqwest;
 use serde_json::{json, Value};
 use tauri::State;
 use tauri::Manager;
 use sidecar::SidecarManager;
+use store::SettingsStore;
 use std::sync::Arc;
 
 pub struct AppState {
   pub sidecar: Arc<SidecarManager>,
+  pub settings_store: Arc<SettingsStore>,
+  pub data_dir: std::path::PathBuf,
 }
 
 #[tauri::command]
@@ -152,12 +156,12 @@ async fn chat_messages(state: State<'_, AppState>) -> Result<Value, String> {
 // ------------------------------------------------------------------ //
 #[tauri::command]
 async fn get_settings(state: State<'_, AppState>) -> Result<Value, String> {
-  api_get(state, "/settings").await
+  Ok(state.settings_store.get().await)
 }
 
 #[tauri::command]
 async fn save_settings(toggles: Value, state: State<'_, AppState>) -> Result<Value, String> {
-  api_post(state, "/settings", json!({"toggles": toggles})).await
+  Ok(state.settings_store.update(toggles).await)
 }
 
 // ------------------------------------------------------------------ //
@@ -170,9 +174,12 @@ pub fn run() {
     .plugin(tauri_plugin_dialog::init())
     .setup(|app| {
       let app_data_dir = app.path().app_data_dir()?;
+      let data_dir = app_data_dir.clone();
       let log_dir = app_data_dir.join("logs");
       std::fs::create_dir_all(&log_dir)?;
       let log_path = log_dir.join("backend.log");
+
+      let settings_store = Arc::new(tauri::async_runtime::block_on(SettingsStore::new(data_dir.clone())));
 
       let sidecar = SidecarManager::new(8727, log_path);
       let sidecar_clone = sidecar.clone();
@@ -182,7 +189,7 @@ pub fn run() {
         }
       });
 
-      app.manage(AppState { sidecar });
+      app.manage(AppState { sidecar, settings_store, data_dir });
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![
