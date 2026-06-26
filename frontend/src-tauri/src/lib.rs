@@ -1,5 +1,6 @@
 mod sidecar;
 mod store;
+mod cases;
 
 use reqwest;
 use serde_json::{json, Value};
@@ -7,11 +8,13 @@ use tauri::State;
 use tauri::Manager;
 use sidecar::SidecarManager;
 use store::SettingsStore;
+use cases::CaseStore;
 use std::sync::Arc;
 
 pub struct AppState {
   pub sidecar: Arc<SidecarManager>,
   pub settings_store: Arc<SettingsStore>,
+  pub case_store: Arc<CaseStore>,
   pub data_dir: std::path::PathBuf,
 }
 
@@ -89,17 +92,20 @@ async fn calibrate_role(role: String, state: State<'_, AppState>) -> Result<Valu
 // ------------------------------------------------------------------ //
 #[tauri::command]
 async fn list_cases(state: State<'_, AppState>) -> Result<Value, String> {
-  api_get(state, "/cases").await
+  Ok(Value::Array(state.case_store.list_cases().await?))
 }
 
 #[tauri::command]
 async fn create_case(title: String, case_type: String, state: State<'_, AppState>) -> Result<Value, String> {
-  api_post(state, "/cases", json!({"title": title, "case_type": case_type})).await
+  state.case_store.create_case(title, case_type).await
 }
 
 #[tauri::command]
 async fn get_case(case_id: String, state: State<'_, AppState>) -> Result<Value, String> {
-  api_get(state, &format!("/cases/{}", case_id)).await
+  match state.case_store.get_case(case_id).await? {
+    Some(value) => Ok(value),
+    None => Err("case not found".to_string()),
+  }
 }
 
 #[tauri::command]
@@ -180,6 +186,7 @@ pub fn run() {
       let log_path = log_dir.join("backend.log");
 
       let settings_store = Arc::new(tauri::async_runtime::block_on(SettingsStore::new(data_dir.clone())));
+      let case_store = Arc::new(tauri::async_runtime::block_on(CaseStore::new(data_dir.clone())));
 
       let sidecar = SidecarManager::new(8727, log_path);
       let sidecar_clone = sidecar.clone();
@@ -189,7 +196,7 @@ pub fn run() {
         }
       });
 
-      app.manage(AppState { sidecar, settings_store, data_dir });
+      app.manage(AppState { sidecar, settings_store, case_store, data_dir });
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![

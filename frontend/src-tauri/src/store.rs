@@ -122,7 +122,7 @@ mod tests {
 
     #[tokio::test]
     async fn settings_store_uses_defaults_on_first_run() {
-        let dir = std::env::temp_dir().join(format!("metascend-settings-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("metascend-settings-defaults-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir).await;
         fs::create_dir_all(&dir).await.unwrap();
 
@@ -145,7 +145,7 @@ mod tests {
     #[tokio::test]
     async fn settings_store_persists_updates() {
         let dir = std::env::temp_dir().join(format!(
-            "metascend-settings-test-{}",
+            "metascend-settings-persist-test-{}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&dir).await;
