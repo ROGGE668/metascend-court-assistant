@@ -8,6 +8,7 @@ use reqwest;
 use serde_json::{json, Value};
 use tauri::State;
 use tauri::Manager;
+use tauri::Emitter;
 use sidecar::SidecarManager;
 use store::SettingsStore;
 use cases::CaseStore;
@@ -198,9 +199,13 @@ pub fn run() {
 
       let sidecar = SidecarManager::new(8727, log_path);
       let sidecar_clone = sidecar.clone();
+      let app_handle = app.handle().clone();
       tauri::async_runtime::spawn(async move {
         if let Err(e) = SidecarManager::start(sidecar_clone).await {
           eprintln!("Backend readiness check failed: {}", e);
+          let _ = app_handle.emit("backend:error", e);
+        } else {
+          let _ = app_handle.emit("backend:ready", ());
         }
       });
 

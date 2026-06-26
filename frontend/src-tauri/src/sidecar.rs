@@ -328,7 +328,31 @@ fn resolve_uv_binary() -> Result<String, String> {
     // Search common installation paths. macOS .app bundles do not inherit the
     // user's shell PATH, so checking standard locations makes the release build
     // more robust.
-    let candidates = ["uv", "/opt/homebrew/bin/uv", "/usr/local/bin/uv", "/usr/bin/uv"];
+    let mut candidates: Vec<String> = vec!["uv".to_string()];
+
+    if let Ok(home) = std::env::var("HOME") {
+        candidates.push(format!("{}/.cargo/bin/uv", home));
+        candidates.push(format!("{}/.local/bin/uv", home));
+        // Pip installs uv into ~/Library/Python/<version>/bin on macOS.
+        let library_python = std::path::PathBuf::from(&home).join("Library/Python");
+        if let Ok(entries) = std::fs::read_dir(&library_python) {
+            let mut versions: Vec<std::path::PathBuf> = entries
+                .flatten()
+                .filter(|e| e.path().is_dir())
+                .map(|e| e.path().join("bin/uv"))
+                .collect();
+            // Prefer newer Python versions (rough lexical order works for 3.9, 3.10, 3.11...).
+            versions.sort();
+            candidates.extend(versions.into_iter().map(|p| p.to_string_lossy().to_string()));
+        }
+    }
+
+    candidates.extend([
+        "/opt/homebrew/bin/uv".to_string(),
+        "/usr/local/bin/uv".to_string(),
+        "/usr/bin/uv".to_string(),
+    ]);
+
     for candidate in &candidates {
         if std::process::Command::new(candidate)
             .arg("--version")
@@ -340,7 +364,10 @@ fn resolve_uv_binary() -> Result<String, String> {
         }
     }
 
-    Err("uv executable not found. Install uv or set UV_PATH.".to_string())
+    Err(format!(
+        "uv executable not found. Searched: {}. Install uv or set UV_PATH.",
+        candidates.join(", ")
+    ))
 }
 
 pub fn project_root() -> PathBuf {
