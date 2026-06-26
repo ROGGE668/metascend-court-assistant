@@ -1,6 +1,7 @@
 mod sidecar;
 mod store;
 mod cases;
+mod evidence;
 
 use reqwest;
 use serde_json::{json, Value};
@@ -9,12 +10,14 @@ use tauri::Manager;
 use sidecar::SidecarManager;
 use store::SettingsStore;
 use cases::CaseStore;
+use evidence::EvidenceStore;
 use std::sync::Arc;
 
 pub struct AppState {
   pub sidecar: Arc<SidecarManager>,
   pub settings_store: Arc<SettingsStore>,
   pub case_store: Arc<CaseStore>,
+  pub evidence_store: Arc<EvidenceStore>,
   pub data_dir: std::path::PathBuf,
 }
 
@@ -110,25 +113,18 @@ async fn get_case(case_id: String, state: State<'_, AppState>) -> Result<Value, 
 
 #[tauri::command]
 async fn list_evidence(state: State<'_, AppState>) -> Result<Value, String> {
-  api_get(state, "/evidence").await
+  Ok(Value::Array(state.evidence_store.list().await?))
 }
 
 #[tauri::command]
 async fn import_evidence(source_path: String, state: State<'_, AppState>) -> Result<Value, String> {
-  api_post(state, "/evidence/import", json!({"source_path": source_path})).await
+  state.evidence_store.import_file(source_path).await
 }
 
 #[tauri::command]
 async fn delete_evidence(name: String, state: State<'_, AppState>) -> Result<Value, String> {
-  let url = format!("{}/evidence/{}", state.sidecar.clone().backend_url().await, name);
-  reqwest::Client::new()
-    .delete(&url)
-    .send()
-    .await
-    .map_err(|e| e.to_string())?
-    .json()
-    .await
-    .map_err(|e| e.to_string())
+  state.evidence_store.delete(name).await?;
+  Ok(json!({"success": true}))
 }
 
 // ------------------------------------------------------------------ //
@@ -187,6 +183,7 @@ pub fn run() {
 
       let settings_store = Arc::new(tauri::async_runtime::block_on(SettingsStore::new(data_dir.clone())));
       let case_store = Arc::new(tauri::async_runtime::block_on(CaseStore::new(data_dir.clone())));
+      let evidence_store = Arc::new(tauri::async_runtime::block_on(EvidenceStore::new(data_dir.clone())));
 
       let sidecar = SidecarManager::new(8727, log_path);
       let sidecar_clone = sidecar.clone();
@@ -196,7 +193,7 @@ pub fn run() {
         }
       });
 
-      app.manage(AppState { sidecar, settings_store, case_store, data_dir });
+      app.manage(AppState { sidecar, settings_store, case_store, evidence_store, data_dir });
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![
