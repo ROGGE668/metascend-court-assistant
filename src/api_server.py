@@ -7,6 +7,7 @@ knowledge metadata) is handled directly by the Rust layer.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -117,11 +118,13 @@ def create_app(dependencies: AppDependencies | None = None) -> FastAPI:
         role = role_map.get(req.role, Role.UNKNOWN)
         if role == Role.UNKNOWN:
             return {"ok": False, "error": f"未知角色: {req.role}"}
-        # Placeholder: real calibration needs a recorded audio sample from the frontend.
-        import numpy as np
-
-        ok = deps.pipeline.calibrate_role(role, np.zeros(16000, dtype=np.float32))
-        return {"ok": ok, "role": req.role}
+        # Record a 5-second sample from the Python-managed microphone stream.
+        ok = await asyncio.to_thread(deps.pipeline.calibrate_role, role, None, 5)
+        return {
+            "ok": ok,
+            "role": req.role,
+            "message": "校准完成" if ok else "校准失败，请检查麦克风与声纹设置",
+        }
 
     # ------------------------------------------------------------------ #
     # Knowledge base search (Rust owns metadata; Python handles vector search)

@@ -47,6 +47,11 @@ class PipelineState:
     suggestion_laws: list[str] = field(default_factory=list)
     latency: str = ""
     chat_messages: list[dict] = field(default_factory=list)
+
+    # Realtime transcript exposed to the frontend separately from status messages.
+    last_transcript: str = ""
+    transcript_log: list[str] = field(default_factory=list)
+
     is_muted: bool = False
     running: bool = False
     courtroom_running: bool = False
@@ -117,6 +122,12 @@ class CourtAssistantPipeline:
 
         self._shutdown_event = threading.Event()
         self._audio = AudioCapture()
+
+        # Voice calibration uses the same microphone stream as VAD/courtroom.
+        self._calibration_lock = threading.Lock()
+        self._calibration_role: Role | None = None
+        self._calibration_buffer: list[np.ndarray] = []
+
         self._vad = VADBuffer()
         self._asr = ASREngine()
         self._case_archive = CaseArchive()
@@ -184,7 +195,7 @@ class CourtAssistantPipeline:
         }
 
     def get_transcript(self) -> str:
-        return self._state.message
+        return self._state.last_transcript
 
     def get_suggestion(self) -> dict:
         return {"text": self._state.suggestion, "laws": self._state.suggestion_laws}
@@ -248,17 +259,52 @@ class CourtAssistantPipeline:
     # ------------------------------------------------------------------ #
     # Voice calibration
     # ------------------------------------------------------------------ #
-    def calibrate_role(self, role: Role, audio) -> bool:
-        """Calibrate a courtroom role using a voice sample."""
+    def calibrate_role(
+        self,
+        role: Role,
+        audio: np.ndarray | None = None,
+        duration_sec: int = 5,
+    ) -> bool:
+        """Calibrate a courtroom role using a voice sample.
+
+        If ``audio`` is provided it is used directly; otherwise a sample of
+        ``duration_sec`` seconds is recorded from the live microphone stream
+        that the pipeline already owns.
+        """
         if self._diarization is None:
             logger.warning("Diarization is disabled; cannot calibrate role %s", role.value)
             return False
         try:
-            self._diarization.calibrate(role, audio)
-            logger.info("Calibrated role %s", role.value)
+            if audio is not None:
+                self._diarization.calibrate(role, audio)
+                logger.info("Calibrated role %s from provided audio", role.value)
+                return True
+
+            with self._calibration_lock:
+                self._calibration_role = role
+                self._calibration_buffer.clear()
+            logger.info("Recording calibration sample for role %s", role.value)
+            time.sleep(duration_sec)
+            with self._calibration_lock:
+                self._calibration_role = None
+                samples = self._calibration_buffer
+                self._calibration_buffer = []
+            if not samples:
+                logger.warning("No audio captured during calibration for role %s", role.value)
+                return False
+            calibration_audio = np.concatenate(samples)
+            self._diarization.calibrate(role, calibration_audio)
+            logger.info(
+                "Calibrated role %s from %d chunks (%.2fs)",
+                role.value,
+                len(samples),
+                len(calibration_audio) / self._audio.sample_rate,
+            )
             return True
         except Exception:
             logger.exception("Role calibration failed")
+            with self._calibration_lock:
+                self._calibration_role = None
             return False
 
     # ------------------------------------------------------------------ #
@@ -334,6 +380,13 @@ class CourtAssistantPipeline:
             transcript = "\n".join(self._format_transcript_line(line) for line in lines)
             self._state.update(transcript, Status.LISTENING)
 
+            self._state.last_transcript = transcript
+            self._state.transcript_log.append(transcript)
+            # Keep the in-memory log bounded so it does not grow forever.
+            max_log = Config.UI_MAX_LINES * 2
+            if len(self._state.transcript_log) > max_log:
+                self._state.transcript_log = self._state.transcript_log[-max_log:]
+
             strategy = None
             if self._legal is not None:
                 transcript_text = " ".join(line.text for line in lines if line.text)
@@ -374,6 +427,10 @@ class CourtAssistantPipeline:
                 chunk = self._audio.read_chunk(timeout=0.1)
                 if chunk is None:
                     continue
+                with self._calibration_lock:
+                    if self._calibration_role is not None:
+                        self._calibration_buffer.append(chunk.copy())
+                        continue
                 speech_segment = self._vad.process(chunk)
                 if speech_segment is not None and len(speech_segment) > 0:
                     if self._recording_store is not None:

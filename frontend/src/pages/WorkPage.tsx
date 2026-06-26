@@ -12,6 +12,9 @@ export default function WorkPage() {
   const [serviceStatus, setServiceStatus] = useState<ServiceStatus>({})
   const [error, setError] = useState('')
 
+  const [calibratingRole, setCalibratingRole] = useState<string | null>(null)
+  const [calibratedRoles, setCalibratedRoles] = useState<Set<string>>(new Set())
+
   useEffect(() => {
     const poll = async () => {
       try {
@@ -24,7 +27,7 @@ export default function WorkPage() {
       }
       try {
         const t = await invoke<Record<string, string>>('get_transcript')
-        if (t.transcript && t.transcript !== transcript && !t.transcript.startsWith('[')) {
+        if (t.transcript && t.transcript !== transcript) {
           setTranscript(t.transcript)
         }
       } catch {
@@ -63,10 +66,19 @@ export default function WorkPage() {
   }
 
   const calibrate = async (role: string) => {
+    setError('')
+    setCalibratingRole(role)
     try {
-      await invoke('calibrate_role', { role })
+      const res = await invoke<Record<string, unknown>>('calibrate_role', { role })
+      if (res.ok) {
+        setCalibratedRoles((prev) => new Set(prev).add(role))
+      } else {
+        setError(`声纹校准失败：${res.message || '请检查麦克风'}`)
+      }
     } catch (e) {
       setError(String(e))
+    } finally {
+      setCalibratingRole(null)
     }
   }
 
@@ -114,9 +126,24 @@ export default function WorkPage() {
           <span className="text-xs text-[#6e6e73] shrink-0">{latency || '延迟就绪'}</span>
         </div>
         <div className="flex gap-2 mt-2">
-          <CalibrationCard role="法官" onRecord={() => calibrate('法官')} />
-          <CalibrationCard role="己方" onRecord={() => calibrate('己方')} />
-          <CalibrationCard role="对方" onRecord={() => calibrate('对方')} />
+          <CalibrationCard
+            role="法官"
+            isRecording={calibratingRole === '法官'}
+            isCalibrated={calibratedRoles.has('法官')}
+            onRecord={() => calibrate('法官')}
+          />
+          <CalibrationCard
+            role="己方"
+            isRecording={calibratingRole === '己方'}
+            isCalibrated={calibratedRoles.has('己方')}
+            onRecord={() => calibrate('己方')}
+          />
+          <CalibrationCard
+            role="对方"
+            isRecording={calibratingRole === '对方'}
+            isCalibrated={calibratedRoles.has('对方')}
+            onRecord={() => calibrate('对方')}
+          />
         </div>
       </div>
 
@@ -156,19 +183,33 @@ function ServiceCard({ title, status }: { title: string; status: string }) {
   )
 }
 
-function CalibrationCard({ role, onRecord }: { role: string; onRecord: () => void }) {
+function CalibrationCard({
+  role,
+  isRecording,
+  isCalibrated,
+  onRecord,
+}: {
+  role: string
+  isRecording: boolean
+  isCalibrated: boolean
+  onRecord: () => void
+}) {
+  const status = isRecording ? '录制中…' : isCalibrated ? '已录制' : '未录制'
   return (
     <div className="flex flex-1 items-center gap-2 rounded-lg border border-[#e5e5e7] px-2.5 py-1.5">
       <span className="text-xs">🎙️</span>
       <div className="min-w-0 leading-tight">
         <div className="text-xs font-medium">{role}</div>
-        <div className="text-xs text-[#6e6e73]">未录制</div>
+        <div className="text-xs text-[#6e6e73]">{status}</div>
       </div>
       <button
         onClick={onRecord}
-        className="ml-auto rounded-full border border-[#e5e5e7] px-3 py-1 text-xs hover:bg-black/5 transition-all"
+        disabled={isRecording}
+        className={`ml-auto rounded-full border border-[#e5e5e7] px-3 py-1 text-xs transition-all ${
+          isRecording ? 'opacity-60 cursor-not-allowed' : 'hover:bg-black/5'
+        }`}
       >
-        录制
+        {isRecording ? '录制中…' : isCalibrated ? '重新录制' : '录制'}
       </button>
     </div>
   )
