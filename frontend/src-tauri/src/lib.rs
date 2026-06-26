@@ -2,6 +2,7 @@ mod sidecar;
 mod store;
 mod cases;
 mod evidence;
+mod knowledge;
 
 use reqwest;
 use serde_json::{json, Value};
@@ -11,6 +12,7 @@ use sidecar::SidecarManager;
 use store::SettingsStore;
 use cases::CaseStore;
 use evidence::EvidenceStore;
+use knowledge::KnowledgeStore;
 use std::sync::Arc;
 
 pub struct AppState {
@@ -18,6 +20,7 @@ pub struct AppState {
   pub settings_store: Arc<SettingsStore>,
   pub case_store: Arc<CaseStore>,
   pub evidence_store: Arc<EvidenceStore>,
+  pub knowledge_store: Arc<KnowledgeStore>,
   pub data_dir: std::path::PathBuf,
 }
 
@@ -132,7 +135,13 @@ async fn delete_evidence(name: String, state: State<'_, AppState>) -> Result<Val
 // ------------------------------------------------------------------ //
 #[tauri::command]
 async fn list_documents(state: State<'_, AppState>) -> Result<Value, String> {
-  api_get(state, "/knowledge").await
+  let docs = state.knowledge_store.list_documents().await?;
+  Ok(json!({
+    "documents": docs,
+    "total": docs.len(),
+    "engine": "ChromaDB",
+    "embedding_model": "BAAI/bge-large-zh-v1.5"
+  }))
 }
 
 #[tauri::command]
@@ -184,6 +193,8 @@ pub fn run() {
       let settings_store = Arc::new(tauri::async_runtime::block_on(SettingsStore::new(data_dir.clone())));
       let case_store = Arc::new(tauri::async_runtime::block_on(CaseStore::new(data_dir.clone())));
       let evidence_store = Arc::new(tauri::async_runtime::block_on(EvidenceStore::new(data_dir.clone())));
+      let knowledge_base_dir = sidecar::project_root().join("data").join("knowledge_base");
+      let knowledge_store = Arc::new(tauri::async_runtime::block_on(KnowledgeStore::new(knowledge_base_dir)));
 
       let sidecar = SidecarManager::new(8727, log_path);
       let sidecar_clone = sidecar.clone();
@@ -193,7 +204,7 @@ pub fn run() {
         }
       });
 
-      app.manage(AppState { sidecar, settings_store, case_store, evidence_store, data_dir });
+      app.manage(AppState { sidecar, settings_store, case_store, evidence_store, knowledge_store, data_dir });
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![

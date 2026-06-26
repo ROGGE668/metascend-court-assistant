@@ -343,7 +343,7 @@ fn resolve_uv_binary() -> Result<String, String> {
     Err("uv executable not found. Install uv or set UV_PATH.".to_string())
 }
 
-fn project_root() -> PathBuf {
+pub fn project_root() -> PathBuf {
     // Development builds launched via cargo: CARGO_MANIFEST_DIR is
     // frontend/src-tauri, so the project root is two levels up.
     if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
