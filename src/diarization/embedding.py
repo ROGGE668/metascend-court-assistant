@@ -40,6 +40,7 @@ class SpeakerEmbeddingExtractor:
                 self.model_name,
                 cache_dir=str(self.cache_dir),
                 use_auth_token=False,
+                local_files_only=True,
             )
             SpeakerEmbeddingExtractor._model_cache = model
             return model

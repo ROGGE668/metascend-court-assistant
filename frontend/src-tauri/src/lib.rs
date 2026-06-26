@@ -5,6 +5,7 @@ mod evidence;
 mod knowledge;
 
 use reqwest;
+use std::time::Duration;
 use serde_json::{json, Value};
 use tauri::State;
 use tauri::Manager;
@@ -32,7 +33,14 @@ fn open_url(url: String) -> Result<(), String> {
 
 async fn api_get(state: State<'_, AppState>, path: &str) -> Result<Value, String> {
   let url = format!("{}{}", state.sidecar.clone().backend_url().await, path);
-  reqwest::get(&url)
+  let client = reqwest::Client::builder()
+    .no_proxy()
+    .timeout(Duration::from_secs(30))
+    .build()
+    .map_err(|e| e.to_string())?;
+  client
+    .get(&url)
+    .send()
     .await
     .map_err(|e| e.to_string())?
     .json()
@@ -42,7 +50,12 @@ async fn api_get(state: State<'_, AppState>, path: &str) -> Result<Value, String
 
 async fn api_post(state: State<'_, AppState>, path: &str, body: Value) -> Result<Value, String> {
   let url = format!("{}{}", state.sidecar.clone().backend_url().await, path);
-  reqwest::Client::new()
+  let client = reqwest::Client::builder()
+    .no_proxy()
+    .timeout(Duration::from_secs(30))
+    .build()
+    .map_err(|e| e.to_string())?;
+  client
     .post(&url)
     .json(&body)
     .send()
