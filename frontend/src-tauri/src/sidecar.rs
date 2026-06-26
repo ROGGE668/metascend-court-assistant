@@ -179,7 +179,8 @@ impl SidecarManager {
 
     fn spawn_python(port: u16) -> Result<(u32, ChildStdout, ChildStderr), String> {
         let root = project_root();
-        let mut child = Command::new("uv")
+        let uv = resolve_uv_binary()?;
+        let mut child = Command::new(&uv)
             .args(["run", "python", "-m", "src.api_server"])
             .current_dir(&root)
             .env("METASCEND_PORT", port.to_string())
@@ -314,6 +315,32 @@ fn send_signal(pid: i32, signal: nix::sys::signal::Signal) -> Result<(), String>
         let _ = (pid, signal);
         Err("Signals not supported on this platform".into())
     }
+}
+
+fn resolve_uv_binary() -> Result<String, String> {
+    // Allow explicit override for testing or bundling.
+    if let Ok(path) = std::env::var("UV_PATH") {
+        if std::path::Path::new(&path).exists() {
+            return Ok(path);
+        }
+    }
+
+    // Search common installation paths. macOS .app bundles do not inherit the
+    // user's shell PATH, so checking standard locations makes the release build
+    // more robust.
+    let candidates = ["uv", "/opt/homebrew/bin/uv", "/usr/local/bin/uv", "/usr/bin/uv"];
+    for candidate in &candidates {
+        if std::process::Command::new(candidate)
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+        {
+            return Ok(candidate.to_string());
+        }
+    }
+
+    Err("uv executable not found. Install uv or set UV_PATH.".to_string())
 }
 
 fn project_root() -> PathBuf {
