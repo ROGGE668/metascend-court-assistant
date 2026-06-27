@@ -9,32 +9,38 @@ pub async fn local_backend_status() -> Result<String, String> {
 }
 
 #[tauri::command]
-pub async fn start_courtroom() -> Result<Value, String> {
+pub async fn start_courtroom(state: State<'_, crate::AppState>) -> Result<Value, String> {
+    let recording = state.mic.start().await?;
     Ok(json!({
-        "courtroom_running": false,
-        "message": "庭审实时辅助已切换到本地 Rust 后端"
+        "courtroom_running": true,
+        "message": "庭审实时辅助已启动，本地麦克风录音已开启",
+        "recording": recording
     }))
 }
 
 #[tauri::command]
-pub async fn stop_courtroom() -> Result<Value, String> {
-    Ok(json!({"courtroom_running": false}))
+pub async fn stop_courtroom(state: State<'_, crate::AppState>) -> Result<Value, String> {
+    let _ = state.mic.stop().await;
+    Ok(json!({"courtroom_running": false, "message": "庭审实时辅助已暂停"}))
 }
 
 #[tauri::command]
-pub async fn get_status() -> Result<Value, String> {
+pub async fn get_status(state: State<'_, crate::AppState>) -> Result<Value, String> {
+    let recording = state.mic.snapshot().await;
+    let recording_flag = recording.get("recording").and_then(|v| v.as_bool()).unwrap_or(false);
     Ok(json!({
-        "message": "Rust 后端已就绪，庭审实时辅助可正常运行",
-        "status": "ready",
+        "message": if recording_flag { "庭审实时辅助运行中，麦克风录音已开启" } else { "Rust 后端已就绪，庭审实时辅助可正常运行" },
+        "status": if recording_flag { "running" } else { "ready" },
         "service_status": {
-            "语音识别 ASR": "本地 Rust 录音",
+            "语音识别 ASR": if recording_flag { "录音中" } else { "本地 Rust 录音" },
             "说话人分离": "未启用",
             "法律策略引擎": "本地规则",
             "语音合成 TTS": "未启用"
         },
         "latency": "",
-        "courtroom_running": false,
-        "active_case": null
+        "courtroom_running": recording_flag,
+        "active_case": null,
+        "recording": recording
     }))
 }
 
@@ -53,7 +59,10 @@ pub async fn get_suggestion() -> Result<Value, String> {
 }
 
 #[tauri::command]
-pub async fn calibrate_role(role: String) -> Result<Value, String> {
+pub async fn calibrate_role(role: String, state: State<'_, crate::AppState>) -> Result<Value, String> {
+    state.mic.start().await?;
+    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+    state.mic.stop().await?;
     Ok(json!({
         "ok": true,
         "role": role,

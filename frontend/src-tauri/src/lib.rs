@@ -4,6 +4,7 @@ mod evidence;
 mod knowledge;
 mod store;
 mod ai_stub;
+mod audio;
 mod llm;
 
 use serde_json::Value;
@@ -21,6 +22,7 @@ pub struct AppState {
     pub evidence_store: Arc<EvidenceStore>,
     pub knowledge_store: Arc<KnowledgeStore>,
     pub llm: Arc<std::sync::Mutex<Option<llm::LlmEngine>>>,
+    pub mic: Arc<audio::MicRecorder>,
     pub data_dir: std::path::PathBuf,
 }
 
@@ -113,6 +115,21 @@ async fn get_knowledge_document(path: String, state: State<'_, AppState>) -> Res
 }
 
 #[tauri::command]
+async fn start_recording(state: State<'_, AppState>) -> Result<Value, String> {
+    state.mic.start().await
+}
+
+#[tauri::command]
+async fn stop_recording(state: State<'_, AppState>) -> Result<Value, String> {
+    state.mic.stop().await
+}
+
+#[tauri::command]
+async fn get_recording(state: State<'_, AppState>) -> Result<Value, String> {
+    Ok(state.mic.snapshot().await)
+}
+
+#[tauri::command]
 async fn chat_ask(message: String, state: State<'_, AppState>) -> Result<Value, String> {
     let settings = state.settings_store.get().await;
     let model_id = settings["rust_llm_model"]
@@ -175,6 +192,7 @@ pub fn run() {
             };
             let knowledge_store = Arc::new(tauri::async_runtime::block_on(KnowledgeStore::new(knowledge_base_dir)));
             let llm = Arc::new(std::sync::Mutex::new(None));
+            let mic = Arc::new(audio::MicRecorder::new());
 
             // No Python sidecar: all APIs are now Rust-native.
 
@@ -184,12 +202,16 @@ pub fn run() {
                 evidence_store,
                 knowledge_store,
                 llm,
+                mic,
                 data_dir,
             });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             open_url,
+            start_recording,
+            stop_recording,
+            get_recording,
             ai_stub::local_backend_status,
             ai_stub::start_courtroom,
             ai_stub::stop_courtroom,
