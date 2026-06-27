@@ -1,11 +1,11 @@
 # Metascend 庭审助手 —— 全 Rust 后端技术规范
 
-> 状态：Phase A 进行中（已移除 Python 后端，Rust 接管数据层，AI 功能暂以 stub 保留接口）
+> 状态：Phase 1 已完成；Phase 2 进行中（已移除 Python sidecar，Rust 接管数据层，并接入真实庭审录音与本地 Whisper ASR 接口）
 
 ## 1. 目标与原则
 
 - **后端完全 Rust 化**：所有业务 API、数据持久化、生命周期管理均在 Tauri 的 Rust 层完成，不再依赖 Python 运行时。
-- **无 Python 副作用**：删除 `src/` Python 后端、`tests/` Python 测试、`pyproject.toml`、`uv.lock`、模型下载脚本等。
+- **无 Python sidecar**：应用运行链路不再依赖 Python 后端；当前 Rust 层已直接承载案件、证据、知识库、设置、庭审录音与 ASR 接口。
 - **本地优先**：数据仍保存在本地 JSON / 文件系统；后续 AI 能力通过 Rust 原生 crate / ONNX 实现，不再调用 Python 模型。
 - **接口兼容**：前端 `invoke` 命令名称与返回结构尽量保持不变，AI 相关命令在实现前返回明确的“暂未实现”提示。
 
@@ -50,7 +50,9 @@ flowchart TB
 | `evidence` | `frontend/src-tauri/src/evidence.rs` | 证据文件导入、列表、删除 |
 | `knowledge` | `frontend/src-tauri/src/knowledge.rs` | 知识库文档元数据与内容读取 |
 | `settings` | `frontend/src-tauri/src/store.rs` | 运行时设置持久化 |
-| `ai_stub` | `frontend/src-tauri/src/ai_stub.rs` | 庭审、校准、聊天等 AI 命令的临时 stub |
+| `ai_stub` | `frontend/src-tauri/src/ai_stub.rs` | 庭审控制、状态、校准与聊天命令，当前已接入真实录音/ASR 能力 |
+| `audio` | `frontend/src-tauri/src/audio.rs` | 麦克风采集、实时录音缓冲、WAV 落盘 |
+| `asr` | `frontend/src-tauri/src/asr.rs` | 本地 Whisper ASR 加载、重采样与转写 |
 | `lib.rs` | `frontend/src-tauri/src/lib.rs` | Tauri 命令注册、状态管理、生命周期 |
 
 ## 5. AI 功能迁移路线图
@@ -60,8 +62,8 @@ flowchart TB
 | 阶段 | 目标 | 候选 Rust 方案 |
 |---|---|---|
 | Phase A | Rust 接管数据 API；AI 命令 stub | — |
-| Phase B | 音频采集 + VAD | `cpal` + `nnnoiseless` / `silero-rs` |
-| Phase C | ASR + 说话人分离 | `whisper-rs` + `pyannote-rs` / ONNX |
+| Phase B | 音频采集 + 转写入口 | `cpal` + `whisper-rs`（已完成接入） |
+| Phase C | 说话人分离 / VAD / 录音增强 | `pyannote-rs` / ONNX / 后续优化 |
 | Phase D | 法律策略 / RAG | `ort` + 本地 embedding + 规则引擎 |
 | Phase E | TTS | `piper-rs` / `ort` |
 
@@ -86,16 +88,15 @@ flowchart TB
 - 生产：`CI=true npm run tauri build`。
 - 不再内嵌 Python、uv、模型缓存；应用包仅包含 Rust 二进制与前端资源。
 
-## 9. 已删除内容
+## 9. 当前实施状态
 
-- `src/`（Python 后端源码）
-- `tests/`（Python 测试）
-- `pyproject.toml`、`uv.lock`、`.python-version`
-- `scripts/download_models.py`
-- Python 相关 CI、文档引用
+- 已删除应用运行链路中的 Python sidecar 依赖。
+- 已新增 Rust 麦克风录音、WAV 持久化、本地 Whisper ASR 接口。
+- 前端庭审辅助页已接入真实录音控制、ASR 加载与转写触发。
+- 后续仍需继续优化说话人分离、法律策略推理、录音 VAD 与 UI 细节。
 
 ## 10. 风险与例外
 
 - 用户已有 `data/` 中的案件、证据、知识库文件继续保留，Rust 数据层使用相同 JSON 结构，兼容旧数据。
 - 若后续需要 ChromaDB 向量搜索，优先考虑 Rust HTTP 客户端访问本地 Chroma 服务，或直接维护向量索引。
-- 庭审实时辅助、声纹校准、法律聊天等功能在 Phase A 不可用，需等待 Phase B-D 逐步实现。
+- 庭审录音与转写入口已可用；说话人分离、法律策略与 TTS 仍需后续阶段补齐。
