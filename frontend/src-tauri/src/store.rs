@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::RwLock;
+use crate::llm;
 
 /// Default ASR model size, kept in sync with Python `Config.ASR_MODEL_SIZE`.
 const DEFAULT_ASR_MODEL: &str = "large-v3-turbo";
@@ -26,6 +27,7 @@ struct SettingsData {
     api_key: String,
     base_url: String,
     chat_model: String,
+    rust_llm_model: String,
 }
 
 impl SettingsStore {
@@ -59,6 +61,7 @@ impl SettingsStore {
             "api_key": data.api_key,
             "base_url": data.base_url,
             "chat_model": data.chat_model,
+            "rust_llm_model": data.rust_llm_model,
         })
     }
 
@@ -76,6 +79,7 @@ impl SettingsStore {
                         "api_key" => data.api_key = text.to_string(),
                         "base_url" => data.base_url = text.to_string(),
                         "chat_model" => data.chat_model = text.to_string(),
+                        "rust_llm_model" => data.rust_llm_model = text.to_string(),
                         _ => {}
                     }
                 }
@@ -128,6 +132,7 @@ impl SettingsStore {
             api_key: String::new(),
             base_url: "http://localhost:11434".to_string(),
             chat_model: DEFAULT_LLM_MODEL.to_string(),
+            rust_llm_model: llm::default_model().to_string(),
         }
     }
 }

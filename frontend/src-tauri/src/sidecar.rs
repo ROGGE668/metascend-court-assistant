@@ -169,7 +169,7 @@ impl SidecarManager {
                 if resp.status().is_success() {
                     if let Ok(body) = resp.json::<serde_json::Value>().await {
                         if body.get("disclaimer").is_some() {
-                            eprintln!("Port {} occupied by existing Metascend backend, terminating...", port);
+                            eprintln!("Port {} occupied by existing Metascend backend, trying next port...", port);
                             if let Err(e) = kill_process_on_port(port) {
                                 eprintln!("Warning: failed to kill existing backend on port {}: {}", port, e);
                                 continue;
@@ -290,6 +290,7 @@ async fn is_port_free(port: u16) -> bool {
 }
 
 fn kill_process_on_port(port: u16) -> Result<(), String> {
+    let own_pid = std::process::id() as i32;
     let output = std::process::Command::new("lsof")
         .args(["-ti", &format!("tcp:{}", port)])
         .output()
@@ -298,6 +299,10 @@ fn kill_process_on_port(port: u16) -> Result<(), String> {
     let pid_str = String::from_utf8_lossy(&output.stdout);
     for pid in pid_str.lines() {
         if let Ok(pid) = pid.parse::<i32>() {
+            if pid <= 1 || pid == own_pid {
+                eprintln!("Skipping protected PID {} on port {}", pid, port);
+                continue;
+            }
             let _ = send_signal(pid, nix::sys::signal::Signal::SIGTERM);
         }
     }

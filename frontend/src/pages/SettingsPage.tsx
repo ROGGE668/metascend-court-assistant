@@ -30,10 +30,7 @@ export default function SettingsPage({ healthLog }: { healthLog?: string[] }) {
   const [sub, setSub] = useState<'general' | 'audio'>('general')
   const [toggles, setToggles] = useState<Record<string, boolean>>({})
   const [settings, setSettings] = useState<Record<string, unknown>>({})
-  const [provider, setProvider] = useState('ollama')
-  const [baseUrl, setBaseUrl] = useState('http://localhost:11434')
-  const [apiKey, setApiKey] = useState('')
-  const [chatModel, setChatModel] = useState('qwen2.5:7b')
+  const [rustLlmModel, setRustLlmModel] = useState('Qwen/Qwen2.5-0.5B-Instruct')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -52,10 +49,7 @@ export default function SettingsPage({ healthLog }: { healthLog?: string[] }) {
         const backendToggles = (res.toggles as Record<string, boolean>) || {}
         setToggles(prev => ({ ...prev, ...backendToggles }))
         setSettings(res)
-        setProvider((res.model_provider as string) || 'ollama')
-        setBaseUrl((res.base_url as string) || 'http://localhost:11434')
-        setApiKey((res.api_key as string) || '')
-        setChatModel((res.chat_model as string) || 'qwen2.5:7b')
+        setRustLlmModel((res.rust_llm_model as string) || 'Qwen/Qwen2.5-0.5B-Instruct')
         setError('')
       } catch (e) {
         setError('加载设置失败：' + String(e))
@@ -75,10 +69,7 @@ export default function SettingsPage({ healthLog }: { healthLog?: string[] }) {
     try {
       const res = await invoke<Record<string, unknown>>('save_settings', {
         toggles,
-        model_provider: provider,
-        base_url: baseUrl,
-        api_key: apiKey,
-        chat_model: chatModel,
+        rust_llm_model: rustLlmModel,
       })
       const backendToggles = (res.toggles as Record<string, boolean>) || {}
       setToggles(prev => ({ ...prev, ...backendToggles }))
@@ -139,49 +130,21 @@ export default function SettingsPage({ healthLog }: { healthLog?: string[] }) {
 
       <div className="glass-card overflow-hidden">
         <div className="px-5 py-3 text-sm font-medium text-[#1d1d1f] border-b border-[#e5e5e7]/60">
-          模型与 API
+          本地 LLM 模型
         </div>
         <div className="divide-y divide-[#e5e5e7]/30">
           <div className="px-5 py-3">
-            <label className="block text-xs text-[#6e6e73] mb-1.5">模型提供方</label>
-            <select
-              value={provider}
-              onChange={e => setProvider(e.target.value)}
-              className={inputClass}
-            >
-              <option value="ollama">Ollama（本地）</option>
-              <option value="openai">OpenAI 兼容接口</option>
-            </select>
-          </div>
-          <div className="px-5 py-3">
-            <label className="block text-xs text-[#6e6e73] mb-1.5">服务地址</label>
+            <label className="block text-xs text-[#6e6e73] mb-1.5">Hugging Face 模型 ID 或本地路径</label>
             <input
               type="text"
-              value={baseUrl}
-              onChange={e => setBaseUrl(e.target.value)}
-              placeholder="例如 http://localhost:11434"
+              value={rustLlmModel}
+              onChange={e => setRustLlmModel(e.target.value)}
+              placeholder="Qwen/Qwen2.5-0.5B-Instruct"
               className={inputClass}
             />
-          </div>
-          <div className="px-5 py-3">
-            <label className="block text-xs text-[#6e6e73] mb-1.5">API Key</label>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={e => setApiKey(e.target.value)}
-              placeholder="使用在线接口时填写"
-              className={inputClass}
-            />
-          </div>
-          <div className="px-5 py-3">
-            <label className="block text-xs text-[#6e6e73] mb-1.5">模型名称</label>
-            <input
-              type="text"
-              value={chatModel}
-              onChange={e => setChatModel(e.target.value)}
-              placeholder="例如 qwen2.5:7b 或 gpt-4o"
-              className={inputClass}
-            />
+            <p className="mt-1.5 text-xs text-[#6e6e73]">
+              首次聊天时自动下载到应用数据目录的 llm_cache 文件夹。
+            </p>
           </div>
         </div>
       </div>
@@ -195,7 +158,7 @@ export default function SettingsPage({ healthLog }: { healthLog?: string[] }) {
             <div>
               <div className="text-sm font-medium text-[#1d1d1f]">当前版本</div>
               <div className="text-xs text-[#6e6e73] mt-0.5">
-                v0.2.0 · {(settings.asr_model as string) || 'Whisper'} · {(settings.chat_model as string) || '规则引擎'}
+                v0.2.0 · {(settings.asr_model as string) || 'Whisper'} · {(settings.rust_llm_model as string) || '规则引擎'}
               </div>
             </div>
             <span className="inline-flex items-center gap-1.5 text-xs text-[#22c55e] font-medium">
@@ -212,7 +175,7 @@ export default function SettingsPage({ healthLog }: { healthLog?: string[] }) {
             <div>
               <div className="text-sm font-medium text-[#1d1d1f]">引擎状态</div>
               <div className="text-xs text-[#6e6e73] mt-0.5">
-                {(settings.asr_model as string) || 'Whisper ASR'} · {(settings.embedding_model as string) || 'ChromaDB'} · {(settings.chat_model as string) || '规则引擎'}
+                {(settings.asr_model as string) || 'Whisper ASR'} · {(settings.embedding_model as string) || 'ChromaDB'} · {(settings.rust_llm_model as string) || '规则引擎'}
               </div>
             </div>
             <span className="inline-flex items-center gap-1.5 text-xs text-[#22c55e] font-medium">

@@ -3,6 +3,7 @@ mod cases;
 mod evidence;
 mod knowledge;
 mod store;
+mod llm;
 
 use serde_json::{json, Value};
 use std::sync::Arc;
@@ -20,6 +21,7 @@ pub struct AppState {
     pub case_store: Arc<CaseStore>,
     pub evidence_store: Arc<EvidenceStore>,
     pub knowledge_store: Arc<KnowledgeStore>,
+    pub llm: Arc<std::sync::Mutex<Option<llm::LlmEngine>>>,
     pub data_dir: std::path::PathBuf,
 }
 
@@ -184,7 +186,29 @@ async fn search_documents(query: String, category: Option<String>, state: State<
 
 #[tauri::command]
 async fn chat_ask(message: String, state: State<'_, AppState>) -> Result<Value, String> {
-    api_post(state, "/chat/ask", json!({"message": message})).await
+    let settings = state.settings_store.get().await;
+    let model_id = settings["rust_llm_model"]
+        .as_str()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| llm::default_model().to_string());
+    let cache_dir = state.data_dir.join("llm_cache");
+    let llm = state.llm.clone();
+    let reply = tokio::task::spawn_blocking(move || -> Result<String, String> {
+        let mut guard = llm.lock().map_err(|e| e.to_string())?;
+        if guard.is_none() {
+            let engine = llm::LlmEngine::load(&model_id, cache_dir)?;
+            *guard = Some(engine);
+        }
+        guard.as_ref().unwrap().chat(&message)
+    })
+    .await
+    .map_err(|e| format!("LLM 任务异常：{}", e))?
+    .map_err(|e| format!("LLM 加载或推理失败：{}", e))?;
+    Ok(json!({
+        "sender": "AI",
+        "text": reply,
+        "ref": "本系统输出仅供参考，不构成法律意见。",
+    }))
 }
 
 #[tauri::command]
@@ -221,6 +245,7 @@ pub fn run() {
                 data_dir.join("knowledge_base")
             };
             let knowledge_store = Arc::new(tauri::async_runtime::block_on(KnowledgeStore::new(knowledge_base_dir)));
+            let llm = Arc::new(std::sync::Mutex::new(None));
 
             let log_dir = data_dir.join("logs");
             std::fs::create_dir_all(&log_dir)?;
@@ -255,6 +280,7 @@ pub fn run() {
                 case_store,
                 evidence_store,
                 knowledge_store,
+                llm,
                 data_dir,
             });
             Ok(())
