@@ -461,9 +461,9 @@ class CourtAssistantPipeline:
             self._state.update("音频已就绪，正在加载语音识别模型...", Status.LISTENING)
             self._push_service_status()
 
-            self._asr.load()
-            self._state.update("模型加载完成，请点击「开始庭审」开始实时辅助", Status.LISTENING)
-            logger.info("ASR model loaded")
+            # Load ASR lazily on first transcription so calibration and audio
+            # capture are not blocked by the potentially long Whisper load.
+            self._state.update("音频已就绪，语音识别模型将在首次庭审时加载", Status.LISTENING)
             self._push_service_status()
         except Exception:
             logger.exception("Pipeline initialization failed")
