@@ -1,6 +1,7 @@
 """Speaker embedding extraction with pyannote and mock backends."""
 
 import logging
+import os
 from pathlib import Path
 
 import numpy as np
@@ -26,12 +27,33 @@ class SpeakerEmbeddingExtractor:
         self.cache_dir = cache_dir
         self._model = None
 
+    def _is_model_cached(self) -> bool:
+        """Return True if the pyannote model files are already in the local cache.
+
+        huggingface_hub stores models under ``models--<org>--<repo>``.  Checking
+        this before calling ``Model.from_pretrained`` prevents pyannote from
+        trying to reach the network even when ``local_files_only=True`` is set.
+        """
+        safe_name = self.model_name.replace("/", "--")
+        cache_path = self.cache_dir / f"models--{safe_name}"
+        return cache_path.exists() and any(cache_path.rglob("*"))
+
     def _load_model(self):
         if self.backend == "mock":
             return None
         if SpeakerEmbeddingExtractor._model_cache is not None:
             return SpeakerEmbeddingExtractor._model_cache
+        if not self._is_model_cached():
+            logger.warning(
+                "Speaker embedding model %s not found in local cache; using mock embeddings.",
+                self.model_name,
+            )
+            self.backend = "mock"
+            return None
         logger.info("Loading speaker embedding model: %s", self.model_name)
+        # Force offline mode so pyannote/huggingface_hub never tries the network.
+        old_hf_offline = os.environ.get("HF_HUB_OFFLINE")
+        os.environ["HF_HUB_OFFLINE"] = "1"
         try:
             from pyannote.audio import Model
 
@@ -48,6 +70,11 @@ class SpeakerEmbeddingExtractor:
             logger.warning("Failed to load pyannote embedding model: %s. Falling back to mock.", e)
             self.backend = "mock"
             return None
+        finally:
+            if old_hf_offline is None:
+                os.environ.pop("HF_HUB_OFFLINE", None)
+            else:
+                os.environ["HF_HUB_OFFLINE"] = old_hf_offline
 
     def extract(self, audio: np.ndarray) -> np.ndarray:
         """Return a fixed-size embedding vector."""
