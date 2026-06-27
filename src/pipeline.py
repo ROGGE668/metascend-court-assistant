@@ -431,16 +431,19 @@ class CourtAssistantPipeline:
                     if self._calibration_role is not None:
                         self._calibration_buffer.append(chunk.copy())
                         continue
-                speech_segment = self._vad.process(chunk)
-                if speech_segment is not None and len(speech_segment) > 0:
-                    if self._recording_store is not None:
-                        try:
-                            self._recording_store.save(speech_segment)
-                        except Exception:
-                            logger.exception("Failed to save recording")
-                    if not self._state.courtroom_running:
-                        continue
-                    self._process_speech_segment(speech_segment)
+                try:
+                    speech_segment = self._vad.process(chunk)
+                    if speech_segment is not None and len(speech_segment) > 0:
+                        if self._recording_store is not None:
+                            try:
+                                self._recording_store.save(speech_segment)
+                            except Exception:
+                                logger.exception("Failed to save recording")
+                        if not self._state.courtroom_running:
+                            continue
+                        self._process_speech_segment(speech_segment)
+                except Exception:
+                    logger.exception("VAD/processing failed; skipping chunk")
         except Exception:
             logger.exception("Audio processing thread crashed")
         finally:
