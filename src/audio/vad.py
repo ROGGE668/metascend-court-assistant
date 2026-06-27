@@ -35,9 +35,11 @@ class VADBuffer:
         min_speech_duration_ms: int = 250,
         min_silence_duration_ms: int = 400,
         padding_ms: int = 200,
+        energy_threshold: float = 0.015,
     ):
         self.sample_rate = sample_rate
         self.threshold = threshold
+        self._energy_threshold = energy_threshold
         self.min_speech_samples = int(sample_rate * min_speech_duration_ms / 1000)
         self.min_silence_samples = int(sample_rate * min_silence_duration_ms / 1000)
         self.padding_samples = int(sample_rate * padding_ms / 1000)
@@ -70,8 +72,15 @@ class VADBuffer:
     def model(self):
         """Lazy-load and cache the Silero VAD model."""
         if self._model is None:
-            self._model, self._utils = self._load_model()
-            self._get_speech_timestamps = self._utils[0]
+            loaded_model, loaded_utils = self._load_model()
+            if loaded_model is None:
+                self._model = None
+                self._utils = None
+                self._get_speech_timestamps = None
+            else:
+                self._model = loaded_model
+                self._utils = loaded_utils
+                self._get_speech_timestamps = self._utils[0]
         return self._model
 
     def _load_model(self):
@@ -93,6 +102,8 @@ class VADBuffer:
 
     def _is_speech(self, audio: np.ndarray) -> bool:
         """Return True if a single VAD window contains speech."""
+        if self.model is None:
+            return self._energy_is_speech(audio)
         tensor = torch.from_numpy(audio.squeeze().astype(np.float32))
         # Guard against callers passing larger chunks.
         if tensor.shape[-1] != self._window_size:
@@ -102,6 +113,12 @@ class VADBuffer:
         with torch.no_grad():
             speech_prob = self.model(tensor, self.sample_rate).item()
         return speech_prob >= self.threshold
+
+    def _energy_is_speech(self, audio: np.ndarray) -> bool:
+        """Lightweight energy-based fallback when Silero VAD is unavailable."""
+        samples = audio.astype(np.float64).reshape(-1)
+        rms = float(np.sqrt(np.mean(samples * samples)))
+        return rms > self._energy_threshold
 
     @staticmethod
     def _resample(
