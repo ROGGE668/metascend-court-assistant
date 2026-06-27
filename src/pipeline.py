@@ -450,17 +450,20 @@ class CourtAssistantPipeline:
             self._audio.stop()
 
     def _initialize_pipeline(self) -> None:
-        """Load ASR model and start audio capture on a background thread."""
+        """Start audio capture immediately and load ASR model in the background."""
         try:
-            logger.info("Loading ASR model...")
-            self._state.update("正在加载语音识别模型...", Status.PROCESSING)
-            self._asr.load()
-            self._state.update("模型加载完成，请点击「开始庭审」开始实时辅助", Status.LISTENING)
-            logger.info("ASR model loaded; starting audio capture")
-
+            logger.info("Starting audio capture...")
+            self._state.update("正在启动音频采集...", Status.PROCESSING)
             self._audio.start()
             self._capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
             self._capture_thread.start()
+            logger.info("Audio capture started; loading ASR model in background")
+            self._state.update("音频已就绪，正在加载语音识别模型...", Status.LISTENING)
+            self._push_service_status()
+
+            self._asr.load()
+            self._state.update("模型加载完成，请点击「开始庭审」开始实时辅助", Status.LISTENING)
+            logger.info("ASR model loaded")
             self._push_service_status()
         except Exception:
             logger.exception("Pipeline initialization failed")
