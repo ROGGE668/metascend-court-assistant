@@ -31,8 +31,12 @@ export default function WorkPage() {
       }
       try {
         const t = await invoke<Record<string, string>>('get_transcript')
-        if (t.transcript && t.transcript !== transcript) {
+        if (typeof t.transcript === 'string' && t.transcript && t.transcript !== transcript) {
           setTranscript(t.transcript)
+        } else if (Array.isArray(t.transcript)) {
+          const arr = t.transcript as unknown as string[]
+          const next = arr.length > 0 ? arr[arr.length - 1] : transcript
+          if (next && next !== transcript) setTranscript(next)
         }
       } catch {
         // ignore polling errors

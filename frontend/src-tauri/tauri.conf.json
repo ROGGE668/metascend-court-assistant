@@ -12,16 +12,13 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ],
-    "macOS": {
-      "infoPlist": "Info.plist"
-    }
+    ]
   },
   "productName": "Metascend Court Assistant",
   "version": "0.2.0",
   "identifier": "com.metascend.court-assistant",
   "app": {
-    "macOSPrivateApi": false,
+    "macOSPrivateApi": true,
     "withGlobalTauri": true,
     "windows": [
       {
