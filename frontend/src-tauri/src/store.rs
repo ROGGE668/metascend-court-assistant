@@ -13,10 +13,6 @@ const DEFAULT_LLM_MODEL: &str = "qwen2.5:7b";
 const DEFAULT_EMBEDDING_MODEL: &str = "BAAI/bge-large-zh-v1.5";
 
 /// Runtime settings persisted to the app data directory.
-///
-/// Mirrors `src/api_server.py::SettingsStore`. The frontend only sends/receives
-/// the `toggles` object; static metadata fields are injected on read so the
-/// response shape stays identical to the previous Python HTTP endpoint.
 pub struct SettingsStore {
     path: PathBuf,
     data_dir: PathBuf,
@@ -26,6 +22,10 @@ pub struct SettingsStore {
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 struct SettingsData {
     toggles: HashMap<String, bool>,
+    model_provider: String,
+    api_key: String,
+    base_url: String,
+    chat_model: String,
 }
 
 impl SettingsStore {
@@ -52,13 +52,17 @@ impl SettingsStore {
         json!({
             "toggles": toggles,
             "asr_model": DEFAULT_ASR_MODEL,
-            "llm_model": DEFAULT_LLM_MODEL,
+            "llm_model": data.chat_model,
             "embedding_model": DEFAULT_EMBEDDING_MODEL,
             "data_dir": self.data_dir.to_string_lossy(),
+            "model_provider": data.model_provider,
+            "api_key": data.api_key,
+            "base_url": data.base_url,
+            "chat_model": data.chat_model,
         })
     }
 
-    /// Merge `updates` into the current toggles, persist, and return the full payload.
+    /// Merge `updates` into the current state, persist, and return the full payload.
     pub async fn update(&self, updates: Value) -> Value {
         let mut data = self.inner.write().await;
 
@@ -66,6 +70,14 @@ impl SettingsStore {
             for (key, value) in map {
                 if let Some(flag) = value.as_bool() {
                     data.toggles.insert(key.clone(), flag);
+                } else if let Some(text) = value.as_str() {
+                    match key.as_str() {
+                        "model_provider" => data.model_provider = text.to_string(),
+                        "api_key" => data.api_key = text.to_string(),
+                        "base_url" => data.base_url = text.to_string(),
+                        "chat_model" => data.chat_model = text.to_string(),
+                        _ => {}
+                    }
                 }
             }
         }
@@ -104,14 +116,19 @@ impl SettingsStore {
 
     fn defaults() -> SettingsData {
         let mut toggles = HashMap::new();
-        // Kept in sync with Python `Config` defaults.
         toggles.insert("diarization".to_string(), false);
         toggles.insert("hotword".to_string(), false);
         toggles.insert("legal".to_string(), false);
         toggles.insert("tts".to_string(), false);
         toggles.insert("recording".to_string(), false);
         toggles.insert("diary".to_string(), false);
-        SettingsData { toggles }
+        SettingsData {
+            toggles,
+            model_provider: "ollama".to_string(),
+            api_key: String::new(),
+            base_url: "http://localhost:11434".to_string(),
+            chat_model: DEFAULT_LLM_MODEL.to_string(),
+        }
     }
 }
 
@@ -132,6 +149,9 @@ mod tests {
         let toggles = payload["toggles"].as_object().unwrap();
         assert_eq!(toggles["diarization"], false);
         assert_eq!(toggles["legal"], false);
+        assert_eq!(payload["model_provider"].as_str().unwrap(), "ollama");
+        assert_eq!(payload["base_url"].as_str().unwrap(), "http://localhost:11434");
+        assert_eq!(payload["chat_model"].as_str().unwrap(), DEFAULT_LLM_MODEL);
         assert_eq!(payload["asr_model"].as_str().unwrap(), DEFAULT_ASR_MODEL);
         assert_eq!(payload["llm_model"].as_str().unwrap(), DEFAULT_LLM_MODEL);
         assert_eq!(
@@ -157,20 +177,21 @@ mod tests {
         let mut updates = Map::new();
         updates.insert("diarization".to_string(), Value::Bool(true));
         updates.insert("legal".to_string(), Value::Bool(true));
+        updates.insert("chat_model".to_string(), Value::String("llama3.1".to_string()));
 
         let payload = store.update(Value::Object(updates)).await;
         let toggles = payload["toggles"].as_object().unwrap();
         assert_eq!(toggles["diarization"], true);
         assert_eq!(toggles["legal"], true);
+        assert_eq!(payload["chat_model"].as_str().unwrap(), "llama3.1");
 
-        // Reload from disk and verify the same values come back.
         let reloaded = SettingsStore::new(dir.clone()).await;
         let reloaded_payload = reloaded.get().await;
         let reloaded_toggles = reloaded_payload["toggles"].as_object().unwrap();
         assert_eq!(reloaded_toggles["diarization"], true);
         assert_eq!(reloaded_toggles["legal"], true);
+        assert_eq!(reloaded_payload["chat_model"].as_str().unwrap(), "llama3.1");
 
-        // Sanity-check the file was actually written.
         assert!(path.exists());
 
         let _ = fs::remove_dir_all(&dir).await;

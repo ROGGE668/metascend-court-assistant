@@ -22,6 +22,7 @@ dist/
 # Tauri frontend
 frontend/node_modules
 frontend/dist
+frontend/tsconfig.tsbuildinfo
 
 # Rust/Tauri build artifacts
 frontend/src-tauri/target/

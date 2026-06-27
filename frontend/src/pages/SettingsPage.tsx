@@ -30,6 +30,10 @@ export default function SettingsPage({ healthLog }: { healthLog?: string[] }) {
   const [sub, setSub] = useState<'general' | 'audio'>('general')
   const [toggles, setToggles] = useState<Record<string, boolean>>({})
   const [settings, setSettings] = useState<Record<string, unknown>>({})
+  const [provider, setProvider] = useState('ollama')
+  const [baseUrl, setBaseUrl] = useState('http://localhost:11434')
+  const [apiKey, setApiKey] = useState('')
+  const [chatModel, setChatModel] = useState('qwen2.5:7b')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -48,6 +52,10 @@ export default function SettingsPage({ healthLog }: { healthLog?: string[] }) {
         const backendToggles = (res.toggles as Record<string, boolean>) || {}
         setToggles(prev => ({ ...prev, ...backendToggles }))
         setSettings(res)
+        setProvider((res.model_provider as string) || 'ollama')
+        setBaseUrl((res.base_url as string) || 'http://localhost:11434')
+        setApiKey((res.api_key as string) || '')
+        setChatModel((res.chat_model as string) || 'qwen2.5:7b')
         setError('')
       } catch (e) {
         setError('加载设置失败：' + String(e))
@@ -65,9 +73,16 @@ export default function SettingsPage({ healthLog }: { healthLog?: string[] }) {
     setSaved(false)
     setError('')
     try {
-      const res = await invoke<Record<string, unknown>>('save_settings', { toggles })
+      const res = await invoke<Record<string, unknown>>('save_settings', {
+        toggles,
+        model_provider: provider,
+        base_url: baseUrl,
+        api_key: apiKey,
+        chat_model: chatModel,
+      })
       const backendToggles = (res.toggles as Record<string, boolean>) || {}
       setToggles(prev => ({ ...prev, ...backendToggles }))
+      setSettings(res)
       setSaved(true)
     } catch (e) {
       setError('保存设置失败：' + String(e))
@@ -76,14 +91,15 @@ export default function SettingsPage({ healthLog }: { healthLog?: string[] }) {
     }
   }
 
+  const inputClass = "w-full rounded-lg border border-[#e5e5e7] bg-white px-3 py-2 text-sm text-[#1d1d1f] focus:border-[#0071e3] focus:outline-none"
+
   return (
     <div className="max-w-2xl space-y-8">
       <div className="slide-up">
         <h1 className="text-xl font-semibold tracking-tight text-[#1d1d1f]">设置</h1>
-        <p className="mt-1.5 text-sm text-[#6e6e73] leading-relaxed">功能开关、版本信息与系统日志</p>
+        <p className="mt-1.5 text-sm text-[#6e6e73] leading-relaxed">功能开关、模型接口与系统日志</p>
       </div>
 
-      {/* 功能 / 音频胶囊 */}
       <div className="flex gap-2">
         <button onClick={() => setSub('general')} className={`tab-capsule ${sub === 'general' ? 'active' : 'inactive'}`}>
           功能
@@ -93,14 +109,12 @@ export default function SettingsPage({ healthLog }: { healthLog?: string[] }) {
         </button>
       </div>
 
-      {/* 错误提示 */}
       {error && (
         <div className="rounded-lg border border-[#fecaca] bg-[#fef2f2] px-4 py-2 text-sm text-[#991b1b]">
           {error}
         </div>
       )}
 
-      {/* 开关列表 */}
       <div className="glass-card overflow-hidden">
         {toggleData[sub].map((item, i) => (
           <div key={item.key} className={`flex items-center justify-between px-5 py-3.5 ${i < toggleData[sub].length - 1 ? 'border-b border-[#e5e5e7]/60' : ''}`}>
@@ -113,7 +127,6 @@ export default function SettingsPage({ healthLog }: { healthLog?: string[] }) {
         ))}
       </div>
 
-      {/* 保存 */}
       <div className="flex justify-end">
         <button
           onClick={handleSave}
@@ -124,7 +137,55 @@ export default function SettingsPage({ healthLog }: { healthLog?: string[] }) {
         </button>
       </div>
 
-      {/* 版本信息 */}
+      <div className="glass-card overflow-hidden">
+        <div className="px-5 py-3 text-sm font-medium text-[#1d1d1f] border-b border-[#e5e5e7]/60">
+          模型与 API
+        </div>
+        <div className="divide-y divide-[#e5e5e7]/30">
+          <div className="px-5 py-3">
+            <label className="block text-xs text-[#6e6e73] mb-1.5">模型提供方</label>
+            <select
+              value={provider}
+              onChange={e => setProvider(e.target.value)}
+              className={inputClass}
+            >
+              <option value="ollama">Ollama（本地）</option>
+              <option value="openai">OpenAI 兼容接口</option>
+            </select>
+          </div>
+          <div className="px-5 py-3">
+            <label className="block text-xs text-[#6e6e73] mb-1.5">服务地址</label>
+            <input
+              type="text"
+              value={baseUrl}
+              onChange={e => setBaseUrl(e.target.value)}
+              placeholder="例如 http://localhost:11434"
+              className={inputClass}
+            />
+          </div>
+          <div className="px-5 py-3">
+            <label className="block text-xs text-[#6e6e73] mb-1.5">API Key</label>
+            <input
+              type="password"
+              value={apiKey}
+              onChange={e => setApiKey(e.target.value)}
+              placeholder="使用在线接口时填写"
+              className={inputClass}
+            />
+          </div>
+          <div className="px-5 py-3">
+            <label className="block text-xs text-[#6e6e73] mb-1.5">模型名称</label>
+            <input
+              type="text"
+              value={chatModel}
+              onChange={e => setChatModel(e.target.value)}
+              placeholder="例如 qwen2.5:7b 或 gpt-4o"
+              className={inputClass}
+            />
+          </div>
+        </div>
+      </div>
+
       <div className="glass-card overflow-hidden">
         <div className="px-5 py-3 text-sm font-medium text-[#1d1d1f] border-b border-[#e5e5e7]/60">
           版本信息
@@ -134,7 +195,7 @@ export default function SettingsPage({ healthLog }: { healthLog?: string[] }) {
             <div>
               <div className="text-sm font-medium text-[#1d1d1f]">当前版本</div>
               <div className="text-xs text-[#6e6e73] mt-0.5">
-                v0.2.0 · {(settings.asr_model as string) || 'Whisper'} · {(settings.llm_model as string) || '规则引擎'}
+                v0.2.0 · {(settings.asr_model as string) || 'Whisper'} · {(settings.chat_model as string) || '规则引擎'}
               </div>
             </div>
             <span className="inline-flex items-center gap-1.5 text-xs text-[#22c55e] font-medium">
@@ -151,7 +212,7 @@ export default function SettingsPage({ healthLog }: { healthLog?: string[] }) {
             <div>
               <div className="text-sm font-medium text-[#1d1d1f]">引擎状态</div>
               <div className="text-xs text-[#6e6e73] mt-0.5">
-                {(settings.asr_model as string) || 'Whisper ASR'} · {(settings.embedding_model as string) || 'ChromaDB'} · {(settings.llm_model as string) || '规则引擎'}
+                {(settings.asr_model as string) || 'Whisper ASR'} · {(settings.embedding_model as string) || 'ChromaDB'} · {(settings.chat_model as string) || '规则引擎'}
               </div>
             </div>
             <span className="inline-flex items-center gap-1.5 text-xs text-[#22c55e] font-medium">
@@ -171,7 +232,6 @@ export default function SettingsPage({ healthLog }: { healthLog?: string[] }) {
         </div>
       </div>
 
-      {/* 系统日志 */}
       <div className="glass-card overflow-hidden" id="system-log">
         <div className="px-5 py-3 text-sm font-medium text-[#1d1d1f] border-b border-[#e5e5e7]/60">
           系统日志

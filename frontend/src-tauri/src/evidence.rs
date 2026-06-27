@@ -119,14 +119,25 @@ impl EvidenceStore {
             .ok_or("invalid modified time")?
             .to_rfc3339();
 
+        let ocr_path = path.with_extension("ocr.txt");
+        let (ocr_status, text_preview) = match fs::read_to_string(&ocr_path).await {
+            Ok(text) => ("ready", text.chars().take(200).collect::<String>()),
+            Err(_) => ("unavailable", String::new()),
+        };
+
         Ok(json!({
             "name": name,
             "size": metadata.len(),
             "suffix": suffix,
             "modified_at": modified_at_utc,
-            "ocr_status": "unavailable",
-            "text_preview": "",
+            "ocr_status": ocr_status,
+            "text_preview": text_preview,
         }))
+    }
+
+    /// Return the stored filesystem path for an evidence file by name.
+    pub fn file_path(&self, name: &str) -> PathBuf {
+        self.base_dir.join(name)
     }
 
     fn resolve_path(&self, name: &str) -> Result<PathBuf, String> {
