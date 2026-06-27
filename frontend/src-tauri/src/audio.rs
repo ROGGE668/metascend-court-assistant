@@ -244,6 +244,13 @@ impl MicRecorder {
         Ok(json!({"ok": true, "message": "麦克风已停止"}))
     }
 
+    pub async fn flush_writer(&self) {
+        let mut state = self.inner.state.write().await;
+        if let Some(writer) = state.current_writer.as_mut() {
+            let _ = writer.flush();
+        }
+    }
+
     pub async fn append_samples(&self, samples: &[f32]) {
         let mut state = self.inner.state.write().await;
         if let Some(writer) = state.current_writer.as_mut() {

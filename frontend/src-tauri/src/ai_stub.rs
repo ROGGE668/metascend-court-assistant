@@ -20,8 +20,9 @@ pub async fn start_courtroom(state: State<'_, crate::AppState>) -> Result<Value,
 
 #[tauri::command]
 pub async fn stop_courtroom(state: State<'_, crate::AppState>) -> Result<Value, String> {
-    let _ = state.mic.stop().await;
-    Ok(json!({"courtroom_running": false, "message": "庭审实时辅助已暂停"}))
+    state.mic.flush_writer().await;
+    let stop = state.mic.stop().await?;
+    Ok(json!({"courtroom_running": false, "message": "庭审实时辅助已暂停", "recording": stop}))
 }
 
 #[tauri::command]
