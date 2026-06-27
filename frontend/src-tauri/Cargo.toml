@@ -30,6 +30,7 @@ hf-hub = "0.5.0"
 rand = "0.10.1"
 cpal = "0.18.1"
 whisper-rs = "0.16.0"
+hound = "3.5.1"
 
 [features]
 default = ["custom-protocol"]

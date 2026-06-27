@@ -132,6 +132,28 @@ async fn get_recording(state: State<'_, AppState>) -> Result<Value, String> {
 }
 
 #[tauri::command]
+async fn get_recording_files(state: State<'_, AppState>) -> Result<Value, String> {
+    let dir = state.data_dir.join("recordings");
+    let mut files = Vec::new();
+    if dir.exists() {
+        for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let path = entry.path();
+            if path.extension().and_then(|s| s.to_str()) == Some("wav") {
+                let metadata = std::fs::metadata(&path).map_err(|e| e.to_string())?;
+                files.push(serde_json::json!({
+                    "name": path.file_name().map(|s| s.to_string_lossy().to_string()),
+                    "path": path.to_string_lossy(),
+                    "size": metadata.len(),
+                }));
+            }
+        }
+    }
+    files.sort_by(|a, b| b["name"].as_str().cmp(&a["name"].as_str()));
+    Ok(serde_json::json!({"dir": dir.to_string_lossy(), "files": files}))
+}
+
+#[tauri::command]
 async fn load_asr_model(model_path: String, state: State<'_, AppState>) -> Result<Value, String> {
     state.asr.ensure_ready(std::path::PathBuf::from(model_path)).await?;
     Ok(state.asr.snapshot().await)
@@ -216,7 +238,7 @@ pub fn run() {
             };
             let knowledge_store = Arc::new(tauri::async_runtime::block_on(KnowledgeStore::new(knowledge_base_dir)));
             let llm = Arc::new(std::sync::Mutex::new(None));
-            let mic = Arc::new(audio::MicRecorder::new());
+            let mic = Arc::new(audio::MicRecorder::new().with_output_dir(data_dir.join("recordings")));
             let asr = Arc::new(asr::AsrEngine::new());
 
             // No Python sidecar: all APIs are now Rust-native.
@@ -241,6 +263,7 @@ pub fn run() {
             start_recording,
             stop_recording,
             get_recording,
+            get_recording_files,
             ai_stub::local_backend_status,
             ai_stub::start_courtroom,
             ai_stub::stop_courtroom,
