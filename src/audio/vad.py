@@ -3,6 +3,7 @@
 import logging
 from collections import deque
 from enum import Enum, auto
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -88,14 +89,37 @@ class VADBuffer:
         if VADBuffer._model_cache is not None:
             logger.debug("Reusing cached Silero VAD model")
             return VADBuffer._model_cache, VADBuffer._utils_cache
-        logger.info("Downloading/loading Silero VAD model for the first time")
-        model, utils = torch.hub.load(
-            repo_or_dir="snakers4/silero-vad",
-            model="silero_vad",
-            force_reload=False,
-            onnx=False,
-            trust_repo=True,
+
+        # Try loading cached JIT directly to avoid torch.hub network stalls
+        jit_path = (
+            Path.home()
+            / ".cache/torch/hub/snakers4_silero-vad_master/src/silero_vad/data/silero_vad.jit"
         )
+        try:
+            if jit_path.exists():
+                logger.info("Loading cached Silero VAD JIT from %s", jit_path)
+                model = torch.jit.load(str(jit_path), map_location="cpu")
+                # Provide a minimal get_speech_timestamps placeholder for callers
+                utils = [lambda *args, **kwargs: []]
+                VADBuffer._model_cache = model
+                VADBuffer._utils_cache = utils
+                return model, utils
+        except Exception as exc:
+            logger.warning("Failed to load cached Silero JIT, falling back to torch.hub: %s", exc)
+
+        try:
+            logger.info("Downloading/loading Silero VAD model for the first time")
+            model, utils = torch.hub.load(
+                repo_or_dir="snakers4/silero-vad",
+                model="silero_vad",
+                force_reload=False,
+                onnx=False,
+                trust_repo=True,
+            )
+        except Exception as exc:
+            logger.error("Failed to load Silero VAD, using energy fallback: %s", exc)
+            return None, None
+
         VADBuffer._model_cache = model
         VADBuffer._utils_cache = utils
         return model, utils
