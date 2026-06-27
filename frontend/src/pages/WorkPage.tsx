@@ -1,9 +1,13 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 
 type ServiceStatus = Record<string, string>
 
+// 启动宽限期：sidecar 启动需要几秒到十几秒，期间不显示红色错误。
+const STARTUP_GRACE_MS = 15000
+
 export default function WorkPage() {
+  const pageStartTime = useRef(Date.now())
   const [running, setRunning] = useState(false)
   const [transcript, setTranscript] = useState('等待庭审发言…')
   const [legalHint, setLegalHint] = useState('等待对方发言中的法律要点…')
@@ -87,6 +91,8 @@ export default function WorkPage() {
     return raw
   }
 
+  const inGrace = Date.now() - pageStartTime.current < STARTUP_GRACE_MS
+
   return (
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-4">
@@ -102,9 +108,14 @@ export default function WorkPage() {
         </button>
       </div>
 
-      {error && (
+      {error && !inGrace && (
         <div className="rounded-lg border border-[#fecaca] bg-[#fef2f2] px-4 py-2 text-sm text-[#991b1b]">
           后端连接异常：{error}
+        </div>
+      )}
+      {error && inGrace && (
+        <div className="rounded-lg border border-[#fde68a] bg-[#fffbeb] px-4 py-2 text-sm text-[#92400e]">
+          后端启动中，请稍候…
         </div>
       )}
 

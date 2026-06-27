@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import WorkPage from './pages/WorkPage'
 import ChatPage from './pages/ChatPage'
@@ -7,12 +7,16 @@ import KnowledgePage from './pages/KnowledgePage'
 import SettingsPage from './pages/SettingsPage'
 
 type Page = 'work' | 'chat' | 'case' | 'knowledge' | 'settings'
-type ServiceHealth = 'normal' | 'abnormal' | 'checking'
+type ServiceHealth = 'normal' | 'abnormal' | 'checking' | 'starting'
+
+// 启动宽限期：后端 sidecar 启动可能需要数秒，期间显示“启动中”而不是“异常”。
+const STARTUP_GRACE_MS = 15000
 
 export default function App() {
   const [page, setPage] = useState<Page>('work')
-  const [health, setHealth] = useState<ServiceHealth>('checking')
+  const [health, setHealth] = useState<ServiceHealth>('starting')
   const [healthLog, setHealthLog] = useState<string[]>([])
+  const appStartTime = useRef(Date.now())
 
   useEffect(() => {
     document.title = 'Metascend 庭审助手'
@@ -48,7 +52,15 @@ export default function App() {
         checks.push('[ERR] ' + String(e))
       }
       setHealthLog(checks)
-      setHealth(allOk ? 'normal' : 'abnormal')
+
+      const inGrace = Date.now() - appStartTime.current < STARTUP_GRACE_MS
+      if (allOk) {
+        setHealth('normal')
+      } else if (inGrace) {
+        setHealth('starting')
+      } else {
+        setHealth('abnormal')
+      }
     }
     check()
     const interval = setInterval(check, 5000)
@@ -130,17 +142,17 @@ function UserArea({ page, setPage }: { page: Page; setPage: (p: Page) => void })
 }
 
 function StatusBadge({ health, setPage }: { health: ServiceHealth; setPage: (p: Page) => void }) {
-  const isChecking = health === 'checking'
   const isNormal = health === 'normal'
-  const color = isChecking ? '#f59e0b' : isNormal ? '#22c55e' : '#ef4444'
-  const label = isChecking ? '自检中…' : isNormal ? '服务正常' : '服务异常'
+  const isStarting = health === 'starting' || health === 'checking'
+  const color = isStarting ? '#f59e0b' : isNormal ? '#22c55e' : '#ef4444'
+  const label = isStarting ? '启动中…' : isNormal ? '服务正常' : '服务异常'
   return (
     <button
-      onClick={() => { if (!isNormal && !isChecking) setPage('settings') }}
+      onClick={() => { if (!isNormal && !isStarting) setPage('settings') }}
       className="inline-flex items-center gap-2 rounded-full border border-[#e5e5e7] bg-[#f5f5f7] px-3 py-1 text-xs text-[#6e6e73] hover:bg-black/5 transition-all"
-      title={isChecking ? '正在自检…' : isNormal ? '系统自检正常' : '点击查看系统日志'}
+      title={isStarting ? '后端正在启动…' : isNormal ? '系统自检正常' : '点击查看系统日志'}
     >
-      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color, boxShadow: `0 0 0 2px ${isNormal ? 'rgba(34,197,94,0.2)' : isChecking ? 'rgba(245,158,11,0.2)' : 'rgba(239,68,68,0.2)'}` }} />
+      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color, boxShadow: `0 0 0 2px ${isNormal ? 'rgba(34,197,94,0.2)' : isStarting ? 'rgba(245,158,11,0.2)' : 'rgba(239,68,68,0.2)'}` }} />
       <span>{label}</span>
     </button>
   )
