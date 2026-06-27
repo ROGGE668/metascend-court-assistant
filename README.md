@@ -1,58 +1,54 @@
 # Metascend 庭审助手
 
-本地优先的 macOS 案件工作台。当前前端与桌面壳已切换为 **Tauri 2 + React/TypeScript**；当前 macOS 交付已统一为 Tauri 2 原生应用；旧版 Python/Tk 与独立 `.app` 打包产物不再沿旧路线维护。
+本地优先的 macOS 案件工作台。当前前端与桌面壳已切换为 **Tauri 2 + React/TypeScript**，后端已全面迁移为 **Rust**；旧版 Python 后端、Python/Tk UI 与独立 `.app` 打包产物不再维护并已从仓库删除。
 
 ## 当前状态
 
-**Phase 1-5 MVP 已完成**：
+**Phase A 已完成**：后端 Rust 化，数据层（案件、证据、知识库、设置）由 Rust 直接处理。
 
-- [x] 音频采集 + Silero VAD
-- [x] 说话人分离与角色绑定（Phase 2）
-- [x] faster-whisper 本地 ASR
-- [x] 法律意图抽取 + RAG + 规则策略（Phase 3）
-- [x] 可选本地 LLM（Ollama）
-- [x] 可选本地 TTS + 闪避（Phase 4）
-- [x] 本地 macOS 案件工作台前端，含顶部状态灯、服务卡片、庭审实时辅助、庭后分析、证据管理、案件档案、设置与用户管理
-- [ ] Tauri 2 原生 macOS `.app` 打包与分发
+- [x] 案件管理（Rust JSON 持久化）
+- [x] 证据导入与管理（Rust 文件系统）
+- [x] 知识库文档列表与内容查看（Rust 本地文件）
+- [x] 设置持久化（Rust JSON）
+- [ ] 庭审实时辅助（等待 Rust AI Phase B-D）
+- [ ] 声纹校准（等待 Rust AI Phase C）
+- [ ] 法律策略 / 聊天（等待 Rust AI Phase D）
+- [ ] 语音合成 TTS（等待 Rust AI Phase E）
 
 ## 运行环境
 
 - macOS 14+
 - Apple Silicon MacBook Air / Pro（M1-M5），16GB 内存及以上
-- Python 3.11 仅用于本地模型与推理后端开发；前端交付采用 Tauri 2
-- 可选：Ollama，用于本地法律问答
+- 后端：Rust（Tauri 2），不再依赖 Python 运行时
 
 ## 安装
 
 ```bash
-uv sync
-uv run python scripts/download_models.py
+cd frontend
+npm install
 ```
 
-国内环境可先设置 Hugging Face 镜像：
+## 开发启动
 
 ```bash
-export HF_ENDPOINT=https://hf-mirror.com
-uv run python scripts/download_models.py
-```
-
-## 启动
-
-```bash
-uv run python -m src.pipeline
+cd frontend
+npm run tauri dev
 ```
 
 ## 打包为可直接打开的 macOS 应用
 
-优先使用完整独立包：
-
-离线网页预览：
-
 ```bash
-open demo/index.html
+cd frontend
+CI=true npm run tauri build
 ```
 
-如需继续本地模型与推理后端开发，仍可通过 Python 后端接口联调；Tauri 桌面壳与原生 `.app` 打包将在后续阶段补齐。
+或使用封装脚本：
+
+```bash
+./scripts/build_app.sh
+```
+
+构建产物位于 `frontend/src-tauri/target/release/bundle/macos/Metascend Court Assistant.app`。
 
 ## 故障排查
 
@@ -64,19 +60,20 @@ open demo/index.html
 cd frontend
 rm -rf node_modules
 npm install
-npm run dev
+npm run tauri dev
 ```
 
 如仍异常，请确认：
 
 - Node/NPM 可用：`node -v` / `npm -v`
-- 前端终端输出不含 `TS` / `vite` 启动报错
-- 若使用 Tauri，请确认 `cargo` / `tauri` CLI 可用
+- Rust 工具链可用：`cargo --version`
+- 前端终端输出不含 `TS` / `vite` / `cargo` 启动报错
 
 ## 开发文档
 
 - [Architecture](/docs/architecture.md)
-- [Phase Guides](/docs/guides/phase2-diarization.md)
+- [Backend Tech Spec](/docs/tech-spec-backend.md)
+- [Phase Guides](/docs/guides/)
 - [Frontend README](/frontend/README.md)
 - [Deployment Guide](/docs/deployment-guide.md)
 - [User Manual](/docs/user-manual.md)
@@ -85,8 +82,8 @@ npm run dev
 ## 测试
 
 ```bash
-uv run pytest tests/ -v          # fast tests
-uv run pytest tests/ --run-slow  # include model-loading tests
+cd frontend/src-tauri
+cargo test
 ```
 
 ## 免责声明
