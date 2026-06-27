@@ -14,6 +14,8 @@ export default function WorkPage() {
   const [countermeasure, setCountermeasure] = useState('暂无应对建议…')
   const [latency, setLatency] = useState('')
   const [serviceStatus, setServiceStatus] = useState<ServiceStatus>({})
+  const [asrReady, setAsrReady] = useState(false)
+  const [asrModelPath, setAsrModelPath] = useState('')
   const [error, setError] = useState('')
 
   const [calibratingRole, setCalibratingRole] = useState<string | null>(null)
@@ -73,6 +75,33 @@ export default function WorkPage() {
     }
   }
 
+  const ensureAsr = async () => {
+    if (asrReady) return
+    const chosen = asrModelPath || window.prompt('请粘贴本地 Whisper 模型文件路径（ggml 格式，例如 ggml-base.bin）')
+    if (!chosen) return
+    setAsrModelPath(chosen)
+    await invoke('load_asr_model', { modelPath: chosen })
+    setAsrReady(true)
+  }
+
+  const handleTranscribe = async () => {
+    setError('')
+    try {
+      if (!asrReady) {
+        await ensureAsr()
+      }
+      const res = await invoke<Record<string, unknown>>('transcribe_recording', { language: 'zh' })
+      const text = (res.text as string) || ''
+      if (text) {
+        setTranscript(text)
+      } else {
+        setTranscript('已采集音频但未识别到有效文本，请确认 Whisper 模型与麦克风输入。')
+      }
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
   const calibrate = async (role: string) => {
     setError('')
     setCalibratingRole(role)
@@ -110,6 +139,18 @@ export default function WorkPage() {
         >
           {running ? '⏸ 暂停庭审' : '▶ 开始庭审'}
         </button>
+        <button
+          onClick={handleTranscribe}
+          className="rounded-full bg-[#34c759] px-4 py-1.5 text-sm text-white hover:bg-[#2aa148] transition-all shrink-0"
+        >
+          转写录音
+        </button>
+        <button
+          onClick={ensureAsr}
+          className="rounded-full border border-[#e5e5e7] px-4 py-1.5 text-sm hover:bg-black/5 transition-all shrink-0"
+        >
+          {asrReady ? 'Whisper 已就绪' : '加载 Whisper'}
+        </button>
       </div>
 
       {error && !inGrace && (
@@ -137,6 +178,7 @@ export default function WorkPage() {
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-xs font-medium shrink-0">🎤 声纹校准</span>
             <span className="text-xs text-[#6e6e73] hidden sm:inline">录制法官、己方、对方各 5 秒样本</span>
+          <span className="text-xs text-[#6e6e73] hidden sm:inline"> · ASR: {asrReady ? '已加载' : '未加载'}</span>
           </div>
           <span className="text-xs text-[#6e6e73] shrink-0">{latency || '延迟就绪'}</span>
         </div>

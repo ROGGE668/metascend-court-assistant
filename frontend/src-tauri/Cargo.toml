@@ -29,6 +29,7 @@ tokenizers = "0.23.1"
 hf-hub = "0.5.0"
 rand = "0.10.1"
 cpal = "0.18.1"
+whisper-rs = "0.16.0"
 
 [features]
 default = ["custom-protocol"]

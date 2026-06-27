@@ -4,6 +4,7 @@ mod evidence;
 mod knowledge;
 mod store;
 mod ai_stub;
+mod asr;
 mod audio;
 mod llm;
 
@@ -23,6 +24,7 @@ pub struct AppState {
     pub knowledge_store: Arc<KnowledgeStore>,
     pub llm: Arc<std::sync::Mutex<Option<llm::LlmEngine>>>,
     pub mic: Arc<audio::MicRecorder>,
+    pub asr: Arc<asr::AsrEngine>,
     pub data_dir: std::path::PathBuf,
 }
 
@@ -130,6 +132,28 @@ async fn get_recording(state: State<'_, AppState>) -> Result<Value, String> {
 }
 
 #[tauri::command]
+async fn load_asr_model(model_path: String, state: State<'_, AppState>) -> Result<Value, String> {
+    state.asr.ensure_ready(std::path::PathBuf::from(model_path)).await?;
+    Ok(state.asr.snapshot().await)
+}
+
+#[tauri::command]
+async fn get_asr_status(state: State<'_, AppState>) -> Result<Value, String> {
+    Ok(state.asr.snapshot().await)
+}
+
+#[tauri::command]
+async fn transcribe_recording(language: Option<String>, state: State<'_, AppState>) -> Result<Value, String> {
+    let (samples, sample_rate, _channels) = state.mic.take_segment().await;
+    if samples.is_empty() {
+        return Err("当前录音缓冲为空，请先开始庭审并录入语音".into());
+    }
+    let sample_rate = sample_rate.unwrap_or(16000);
+    let result = state.asr.transcribe(&samples, sample_rate, language.as_deref()).await?;
+    Ok(result)
+}
+
+#[tauri::command]
 async fn chat_ask(message: String, state: State<'_, AppState>) -> Result<Value, String> {
     let settings = state.settings_store.get().await;
     let model_id = settings["rust_llm_model"]
@@ -193,6 +217,7 @@ pub fn run() {
             let knowledge_store = Arc::new(tauri::async_runtime::block_on(KnowledgeStore::new(knowledge_base_dir)));
             let llm = Arc::new(std::sync::Mutex::new(None));
             let mic = Arc::new(audio::MicRecorder::new());
+            let asr = Arc::new(asr::AsrEngine::new());
 
             // No Python sidecar: all APIs are now Rust-native.
 
@@ -203,12 +228,16 @@ pub fn run() {
                 knowledge_store,
                 llm,
                 mic,
+                asr,
                 data_dir,
             });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             open_url,
+            load_asr_model,
+            get_asr_status,
+            transcribe_recording,
             start_recording,
             stop_recording,
             get_recording,
