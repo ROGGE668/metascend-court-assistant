@@ -217,3 +217,41 @@ pub async fn clear_transcripts(state: State<'_, crate::AppState>) -> Result<Valu
     state.pipeline.clear_transcripts().await;
     Ok(json!({"ok": true, "message": "转写记录已清空"}))
 }
+
+/// 生成策略报告。
+#[tauri::command]
+pub async fn generate_strategy_report(
+    case_type: Option<String>,
+    state: State<'_, crate::AppState>,
+) -> Result<Value, String> {
+    // 获取转写历史
+    let transcripts = state.pipeline.get_transcripts().await;
+    let transcript_texts: Vec<String> = transcripts.iter().map(|t| t.text.clone()).collect();
+
+    // 获取聊天历史作为补充
+    let chat_messages = state.chat_store.load_messages().await.map_err(|e| e.to_string())?;
+    let chat_texts: Vec<String> = chat_messages
+        .iter()
+        .filter(|m| m.sender == "User")
+        .map(|m| m.text.clone())
+        .collect();
+
+    // 合并转写和聊天记录
+    let mut all_texts = transcript_texts;
+    all_texts.extend(chat_texts);
+
+    if all_texts.is_empty() {
+        return Ok(json!({
+            "ok": false,
+            "message": "暂无转写或聊天记录，无法生成报告。"
+        }));
+    }
+
+    let engine = state.strategy_engine.read().await;
+    let report = engine.generate_report(&all_texts, case_type.as_deref());
+
+    Ok(json!({
+        "ok": true,
+        "report": report
+    }))
+}

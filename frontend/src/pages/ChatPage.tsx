@@ -8,11 +8,23 @@ type Message = {
   time: string
 }
 
+type StrategyReport = {
+  summary: string
+  case_type: string
+  key_points: string[]
+  suggestions: string[]
+  relevant_laws: string[]
+  risk_analysis: string
+  generated_at: string
+}
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [reportLoading, setReportLoading] = useState(false)
   const [error, setError] = useState('')
+  const [report, setReport] = useState<StrategyReport | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   const loadMessages = async () => {
@@ -46,6 +58,23 @@ export default function ChatPage() {
       setError('发送失败：' + String(e))
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleGenerateReport = async () => {
+    setReportLoading(true)
+    setError('')
+    try {
+      const res = await invoke<{ ok: boolean; report?: StrategyReport; message?: string }>('generate_strategy_report')
+      if (res.ok && res.report) {
+        setReport(res.report)
+      } else {
+        setError(res.message || '生成报告失败')
+      }
+    } catch (e) {
+      setError('生成报告失败：' + String(e))
+    } finally {
+      setReportLoading(false)
     }
   }
 
@@ -125,8 +154,55 @@ export default function ChatPage() {
             )}
           </div>
           <div className="rounded-lg border border-[#e5e5e7]/60 p-4">
-            <h3 className="text-sm font-semibold">策略报告</h3>
-            {lastAI ? (
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">策略报告</h3>
+              <button
+                onClick={handleGenerateReport}
+                disabled={reportLoading}
+                className="rounded-full bg-[#34c759] px-3 py-1 text-xs text-white hover:bg-[#2aa148] transition-all disabled:opacity-50"
+              >
+                {reportLoading ? '生成中…' : '生成报告'}
+              </button>
+            </div>
+            {report ? (
+              <div className="mt-2 text-sm space-y-2">
+                <div className="rounded bg-[#f5f5f7] p-2">
+                  <div className="font-medium text-xs text-[#6e6e73] mb-1">案件类型</div>
+                  <div>{report.case_type}</div>
+                </div>
+                {report.key_points.length > 0 && (
+                  <div>
+                    <div className="font-medium text-xs text-[#6e6e73] mb-1">关键点</div>
+                    <ul className="list-disc list-inside space-y-0.5">
+                      {report.key_points.slice(0, 5).map((p, i) => (
+                        <li key={i} className="text-xs">{p}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {report.suggestions.length > 0 && (
+                  <div>
+                    <div className="font-medium text-xs text-[#6e6e73] mb-1">建议</div>
+                    <ul className="list-disc list-inside space-y-0.5">
+                      {report.suggestions.slice(0, 3).map((s, i) => (
+                        <li key={i} className="text-xs">{s}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {report.relevant_laws.length > 0 && (
+                  <div>
+                    <div className="font-medium text-xs text-[#6e6e73] mb-1">相关法律</div>
+                    <div className="text-xs text-[#0071e3]">{report.relevant_laws.join(' · ')}</div>
+                  </div>
+                )}
+                <div className="rounded bg-[#fef2f2] p-2">
+                  <div className="font-medium text-xs text-[#991b1b] mb-1">风险分析</div>
+                  <div className="text-xs">{report.risk_analysis}</div>
+                </div>
+                <div className="text-xs text-[#6e6e73]">生成时间：{report.generated_at}</div>
+              </div>
+            ) : lastAI ? (
               <div className="mt-2 text-sm space-y-1">
                 <p>{lastAI.text}</p>
                 {lastAI.ref && <p className="text-xs text-[#6e6e73]">{lastAI.ref}</p>}

@@ -217,3 +217,119 @@ mod tests {
         assert!(suggestion["text"].as_str().unwrap().contains("异议"));
     }
 }
+
+/// 策略报告结构。
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StrategyReport {
+    pub summary: String,
+    pub case_type: String,
+    pub key_points: Vec<String>,
+    pub suggestions: Vec<String>,
+    pub relevant_laws: Vec<String>,
+    pub risk_analysis: String,
+    pub generated_at: String,
+}
+
+impl StrategyEngine {
+    /// 生成完整策略报告，基于转写历史和聊天记录。
+    pub fn generate_report(
+        &self,
+        transcripts: &[String],
+        case_type: Option<&str>,
+    ) -> StrategyReport {
+        let ct = case_type.unwrap_or("通用");
+        let mut key_points = Vec::new();
+        let mut suggestions = Vec::new();
+        let mut all_laws = Vec::new();
+
+        // 分析每条转写内容
+        for text in transcripts {
+            let suggestion = self.get_suggestion(text, Some(ct));
+            
+            // 提取关键点
+            if let Some(stage) = suggestion["stage"].as_str() {
+                key_points.push(format!("[{}] {}", stage, text));
+            }
+            
+            // 提取建议
+            if let Some(countermeasure) = suggestion["countermeasure"].as_str() {
+                if !countermeasure.is_empty() && !suggestions.contains(&countermeasure.to_string()) {
+                    suggestions.push(countermeasure.to_string());
+                }
+            }
+            
+            // 提取法律条文
+            if let Some(laws) = suggestion["laws"].as_array() {
+                for law in laws {
+                    if let Some(law_str) = law.as_str() {
+                        if !all_laws.contains(&law_str.to_string()) {
+                            all_laws.push(law_str.to_string());
+                        }
+                    }
+                }
+            }
+        }
+
+        // 风险分析
+        let risk_analysis = self.analyze_risks(transcripts, ct);
+
+        // 生成摘要
+        let summary = format!(
+            "案件类型：{}\n转写记录数：{}\n识别到的关键点：{}\n建议数：{}",
+            ct,
+            transcripts.len(),
+            key_points.len(),
+            suggestions.len()
+        );
+
+        StrategyReport {
+            summary,
+            case_type: ct.to_string(),
+            key_points,
+            suggestions,
+            relevant_laws: all_laws,
+            risk_analysis,
+            generated_at: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+        }
+    }
+
+    /// 风险分析。
+    fn analyze_risks(&self, transcripts: &[String], case_type: &str) -> String {
+        let mut risks = Vec::new();
+
+        // 检查是否遗漏关键证据
+        let has_evidence = transcripts.iter().any(|t| t.contains("证据"));
+        if !has_evidence {
+            risks.push("未提及证据问题，建议补充证据说明。".to_string());
+        }
+
+        // 检查是否回应了对方主张
+        let has_response = transcripts.iter().any(|t| t.contains("回应") || t.contains("反驳"));
+        if !has_response {
+            risks.push("未明确回应对方主张，建议准备反驳要点。".to_string());
+        }
+
+        // 根据案件类型检查特定风险
+        match case_type {
+            "借贷" => {
+                let has_amount = transcripts.iter().any(|t| t.contains("金额") || t.contains("利息"));
+                if !has_amount {
+                    risks.push("借贷案件未明确金额和利息，建议核实具体数字。".to_string());
+                }
+            }
+            "离婚" => {
+                let has_property = transcripts.iter().any(|t| t.contains("财产") || t.contains("抚养"));
+                if !has_property {
+                    risks.push("离婚案件未涉及财产分割或抚养权，建议补充相关陈述。".to_string());
+                }
+            }
+            _ => {}
+        }
+
+        if risks.is_empty() {
+            "未发现明显风险。".to_string()
+        } else {
+            risks.join("\n")
+        }
+    }
+}

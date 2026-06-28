@@ -12,10 +12,17 @@ const MAX_NEW_TOKENS: usize = 256;
 const TEMPERATURE: f64 = 0.7;
 const TOP_P: f64 = 0.9;
 
+#[derive(Clone, Debug)]
+pub struct ConversationTurn {
+    pub role: String,
+    pub content: String,
+}
+
 pub struct LlmEngine {
     model: std::sync::Mutex<ModelForCausalLM>,
     tokenizer: Tokenizer,
     device: Device,
+    history: std::sync::Mutex<Vec<ConversationTurn>>,
 }
 
 impl LlmEngine {
@@ -53,6 +60,7 @@ impl LlmEngine {
             model: std::sync::Mutex::new(model),
             tokenizer,
             device,
+            history: std::sync::Mutex::new(Vec::new()),
         })
     }
 
@@ -159,19 +167,69 @@ impl LlmEngine {
             .map_err(|e| e.to_string())?;
         Ok(text.trim().to_string())
     }
-}
 
-    fn huggingface_endpoint() -> String {
-        if let Ok(endpoint) = std::env::var("HF_ENDPOINT") {
-            if !endpoint.is_empty() {
-                return endpoint.trim_end_matches("/").to_string();
+    /// Multi-turn chat with history context.
+    pub fn chat_with_history(&self, user_prompt: &str) -> Result<String, String> {
+        let system = "你是一位专业的法律助手，回答简洁、准确，只基于中国现行法律常识。";
+        let mut history = self.history.lock().map_err(|e| e.to_string())?;
+        let mut fp = format!("<|im_start|>system\n{}\n</think>\n", system);
+        for t in history.iter() {
+            fp.push_str(&format!("<|im_start|>{}\n{}\n</think>\n", t.role, t.content));
+        }
+        fp.push_str(&format!("<|im_start|>user\n{}\n</think>\n<|im_start|>assistant\n", user_prompt));
+        let encoding = self.tokenizer.encode(fp, true).map_err(|e| e.to_string())?;
+        let mut tokens: Vec<u32> = encoding.get_ids().to_vec();
+        let eos: Vec<u32> = ["</think>", "</think>"].iter().filter_map(|t| self.tokenizer.token_to_id(t)).collect();
+        let mut model = self.model.lock().map_err(|e| e.to_string())?;
+        model.clear_kv_cache();
+        let input = Tensor::new(tokens.as_slice(), &self.device).map_err(|e| e.to_string())?.unsqueeze(0).map_err(|e| e.to_string())?;
+        let logits = model.forward(&input, 0).map_err(|e| e.to_string())?;
+        let logits = logits.squeeze(0).map_err(|e| e.to_string())?.squeeze(0).map_err(|e| e.to_string())?;
+        let sampling = Sampling::TopP { p: TOP_P, temperature: TEMPERATURE };
+        let mut lp = LogitsProcessor::from_sampling(299792458, sampling);
+        let next = lp.sample(&logits).map_err(|e| e.to_string())?;
+        tokens.push(next);
+        let mut gen = vec![next];
+        if !eos.contains(&next) {
+            for _ in 0..MAX_NEW_TOKENS {
+                let i = Tensor::new(&[tokens[tokens.len() - 1]], &self.device).map_err(|e| e.to_string())?.unsqueeze(0).map_err(|e| e.to_string())?;
+                let l = model.forward(&i, tokens.len() - 1).map_err(|e| e.to_string())?;
+                let l = l.squeeze(0).map_err(|e| e.to_string())?.squeeze(0).map_err(|e| e.to_string())?;
+                let n = lp.sample(&l).map_err(|e| e.to_string())?;
+                tokens.push(n);
+                if eos.contains(&n) { break; }
+                gen.push(n);
             }
         }
-        // Default to a mirror because the upstream huggingface.co endpoint is
-        // not reachable in this environment. Users outside China can override
-        // with the HF_ENDPOINT environment variable.
-        "https://hf-mirror.com".to_string()
+        drop(model);
+        let reply = self.tokenizer.decode(&gen, true).map_err(|e| e.to_string())?;
+        let reply = reply.trim().to_string();
+        history.push(ConversationTurn { role: "user".to_string(), content: user_prompt.to_string() });
+        history.push(ConversationTurn { role: "assistant".to_string(), content: reply.clone() });
+        if history.len() > 20 { history.drain(..4); }
+        Ok(reply)
     }
+
+    pub fn clear_history(&self) {
+        if let Ok(mut h) = self.history.lock() { h.clear(); }
+    }
+
+    pub fn history_length(&self) -> usize {
+        self.history.lock().map(|h| h.len()).unwrap_or(0)
+    }
+}
+
+fn huggingface_endpoint() -> String {
+    if let Ok(endpoint) = std::env::var("HF_ENDPOINT") {
+        if !endpoint.is_empty() {
+            return endpoint.trim_end_matches("/").to_string();
+        }
+    }
+    // Default to a mirror because the upstream huggingface.co endpoint is
+    // not reachable in this environment. Users outside China can override
+    // with the HF_ENDPOINT environment variable.
+    "https://hf-mirror.com".to_string()
+}
 
 
 

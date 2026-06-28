@@ -219,7 +219,7 @@ async fn chat_ask(message: String, state: State<'_, AppState>) -> Result<Value, 
             let engine = llm::LlmEngine::load(&model_id, cache_dir)?;
             *guard = Some(engine);
         }
-        guard.as_ref().unwrap().chat(&message)
+        guard.as_ref().unwrap().chat_with_history(&message)
     })
     .await
     .map_err(|e| format!("LLM 任务异常：{}", e))?
@@ -335,6 +335,7 @@ pub fn run() {
             ai_stub::calibrate_role,
             ai_stub::get_pipeline_status,
             ai_stub::clear_transcripts,
+            ai_stub::generate_strategy_report,
             list_cases,
             create_case,
             get_case,
