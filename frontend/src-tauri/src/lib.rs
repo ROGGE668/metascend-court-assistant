@@ -9,6 +9,8 @@ mod ai_stub;
 mod asr;
 mod audio;
 mod vad;
+mod chat;
+mod strategy;
 
 use serde_json::Value;
 use std::sync::Arc;
@@ -20,6 +22,8 @@ use evidence::EvidenceStore;
 use knowledge::KnowledgeStore;
 use pipeline::CourtroomPipeline;
 use store::SettingsStore;
+use chat::ChatStore;
+use strategy::StrategyEngine;
 
 pub struct AppState {
     pub settings_store: Arc<SettingsStore>,
@@ -30,6 +34,8 @@ pub struct AppState {
     pub mic: Arc<audio::MicRecorder>,
     pub asr: Arc<asr::AsrEngine>,
     pub pipeline: Arc<CourtroomPipeline>,
+    pub chat_store: Arc<ChatStore>,
+    pub strategy_engine: Arc<tokio::sync::RwLock<StrategyEngine>>,
     pub data_dir: std::path::PathBuf,
 }
 
@@ -197,6 +203,9 @@ async fn transcribe_recording(
 
 #[tauri::command]
 async fn chat_ask(message: String, state: State<'_, AppState>) -> Result<Value, String> {
+    // 持久化用户消息
+    state.chat_store.append_message("User", &message, "").await.map_err(|e| e.to_string())?;
+
     let settings = state.settings_store.get().await;
     let model_id = settings["rust_llm_model"]
         .as_str()
@@ -215,10 +224,15 @@ async fn chat_ask(message: String, state: State<'_, AppState>) -> Result<Value, 
     .await
     .map_err(|e| format!("LLM 任务异常：{}", e))?
     .map_err(|e| format!("LLM 加载或推理失败：{}", e))?;
+
+    let ref_text = "本系统输出仅供参考，不构成法律意见。";
+    // 持久化 AI 回复
+    state.chat_store.append_message("AI", &reply, ref_text).await.map_err(|e| e.to_string())?;
+
     Ok(serde_json::json!({
         "sender": "AI",
         "text": reply,
-        "ref": "本系统输出仅供参考，不构成法律意见。",
+        "ref": ref_text,
     }))
 }
 
@@ -272,6 +286,21 @@ pub fn run() {
             let asr = Arc::new(asr::AsrEngine::new());
             let diarization = Arc::new(DiarizationEngine::new());
             let pipeline = CourtroomPipeline::new(mic.clone(), asr.clone(), diarization);
+            let chat_store = Arc::new(tauri::async_runtime::block_on(ChatStore::new(data_dir.clone())));
+            let template_path = if cfg!(debug_assertions) {
+                let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
+                std::path::PathBuf::from(manifest_dir)
+                    .parent()
+                    .and_then(|p| p.parent())
+                    .map(|p| p.to_path_buf())
+                    .unwrap_or_default()
+                    .join("data").join("templates").join("strategies.yaml")
+            } else {
+                data_dir.join("templates").join("strategies.yaml")
+            };
+            let strategy_engine = Arc::new(tokio::sync::RwLock::new(
+                tauri::async_runtime::block_on(StrategyEngine::new(template_path))
+            ));
 
             app.manage(AppState {
                 settings_store,
@@ -282,6 +311,8 @@ pub fn run() {
                 mic,
                 asr,
                 pipeline,
+                chat_store,
+                strategy_engine,
                 data_dir,
             });
             Ok(())

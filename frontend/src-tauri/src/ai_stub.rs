@@ -102,7 +102,7 @@ pub async fn get_transcript(state: State<'_, crate::AppState>) -> Result<Value, 
     }))
 }
 
-/// 获取法律建议（当前使用规则引擎）。
+/// 获取法律建议（基于策略引擎）。
 #[tauri::command]
 pub async fn get_suggestion(state: State<'_, crate::AppState>) -> Result<Value, String> {
     let entries = state.pipeline.get_recent_transcripts(5).await;
@@ -111,25 +111,28 @@ pub async fn get_suggestion(state: State<'_, crate::AppState>) -> Result<Value, 
         .map(|e| e.text.as_str())
         .unwrap_or("");
 
-    // 简单规则引擎：根据关键词生成建议
-    let suggestion = if last_text.contains("异议") {
-        "对方提出异议，建议关注异议的具体内容和法律依据。"
-    } else if last_text.contains("证据") {
-        "涉及证据问题，建议核实证据的真实性、合法性和关联性。"
-    } else if last_text.contains("赔偿") || last_text.contains("损失") {
-        "涉及赔偿/损失问题，建议明确计算依据和因果关系。"
-    } else if last_text.is_empty() {
-        "等待庭审发言..."
-    } else {
-        "正在分析发言内容..."
-    };
+    if last_text.is_empty() {
+        return Ok(json!({
+            "text": "等待庭审发言...",
+            "laws": [],
+            "suggestion": "等待庭审发言...",
+            "references": [],
+            "disclaimer": "本系统输出仅供参考，不构成法律意见。"
+        }));
+    }
+
+    let engine = state.strategy_engine.read().await;
+    let suggestion = engine.get_suggestion(last_text, None);
 
     Ok(json!({
-        "text": suggestion,
-        "laws": [],
-        "suggestion": suggestion,
+        "text": suggestion["text"],
+        "laws": suggestion["laws"],
+        "suggestion": suggestion["text"],
+        "countermeasure": suggestion["countermeasure"],
+        "case_type": suggestion["case_type"],
+        "stage": suggestion["stage"],
         "references": [],
-        "disclaimer": "本系统输出仅供参考，不构成法律意见。"
+        "disclaimer": suggestion["disclaimer"]
     }))
 }
 
@@ -171,10 +174,11 @@ pub async fn calibrate_role(
     }))
 }
 
-/// 获取法律聊天消息（当前返回空列表）。
+/// 获取法律聊天历史。
 #[tauri::command]
-pub async fn chat_messages() -> Result<Value, String> {
-    Ok(json!([]))
+pub async fn chat_messages(state: State<'_, crate::AppState>) -> Result<Value, String> {
+    let messages = state.chat_store.load_messages().await.map_err(|e| e.to_string())?;
+    Ok(json!(messages))
 }
 
 /// 搜索文档。
