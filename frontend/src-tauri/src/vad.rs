@@ -3,14 +3,6 @@
 //! 将音频帧分为 speech / silence，用于驱动自动转写流水线。
 //! 不引入外部 VAD crate，使用帧 RMS 能量与自适应阈值。
 
-use serde::{Deserialize, Serialize};
-
-/// 一帧的检测结果。
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VadFrame {
-    pub is_speech: bool,
-    pub rms: f32,
-}
 
 /// VAD 状态机配置。
 #[derive(Debug, Clone)]
@@ -38,6 +30,7 @@ impl Default for VadConfig {
 
 /// 语音段：起止帧索引与对应采样。
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct SpeechSegment {
     pub start_frame: usize,
     pub end_frame: usize,
@@ -137,16 +130,19 @@ impl VadEngine {
     }
 
     /// 当前是否有语音活动。
+    #[allow(dead_code)]
     pub fn is_speech_active(&self) -> bool {
         self.in_speech
     }
 
     /// 取出当前正在积累的语音段（不结束），用于实时预览。
+    #[allow(dead_code)]
     pub fn current_speech_samples(&self) -> &[f32] {
         &self.speech_samples
     }
 
     /// 重置状态。
+    #[allow(dead_code)]
     pub fn reset(&mut self) {
         self.buffer.clear();
         self.in_speech = false;
