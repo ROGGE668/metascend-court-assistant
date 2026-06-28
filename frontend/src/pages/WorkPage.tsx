@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 
 type ServiceStatus = Record<string, string>
 
@@ -21,44 +22,51 @@ export default function WorkPage() {
   const [calibratingRole, setCalibratingRole] = useState<string | null>(null)
   const [calibratedRoles, setCalibratedRoles] = useState<Set<string>>(new Set())
 
+  // 订阅流水线实时转写事件
+  useEffect(() => {
+    const unlisten = listen<Record<string, unknown>>('transcript:new', (event) => {
+      const entry = event.payload
+      const speaker = (entry.speaker as string) || '未知'
+      const text = (entry.text as string) || ''
+      const ts = (entry.timestamp as string) || ''
+      if (text) {
+        setTranscript(prev => {
+          const line = `[${ts}] 【${speaker}】${text}`
+          return prev === '等待庭审发言…' ? line : prev + '\n' + line
+        })
+      }
+    })
+    return () => { unlisten.then(fn => fn()) }
+  }, [])
+
+  // 轮询状态和建议（低频）
   useEffect(() => {
     const poll = async () => {
       try {
         const status = await invoke<Record<string, unknown>>('get_status')
         setServiceStatus((status.service_status as ServiceStatus) || {})
         setLatency(status.latency as string || '')
+        setRunning(!!status.courtroom_running)
         setError('')
       } catch (e) {
         setError(String(e))
       }
       try {
-        const t = await invoke<Record<string, string>>('get_transcript')
-        if (typeof t.transcript === 'string' && t.transcript && t.transcript !== transcript) {
-          setTranscript(t.transcript)
-        } else if (Array.isArray(t.transcript)) {
-          const arr = t.transcript as unknown as string[]
-          const next = arr.length > 0 ? arr[arr.length - 1] : transcript
-          if (next && next !== transcript) setTranscript(next)
-        }
-      } catch {
-        // ignore polling errors
-      }
-      try {
         const s = await invoke<Record<string, unknown>>('get_suggestion')
         const text = (s.text as string) || ''
         const laws = (s.laws as string[]) || []
-        if (text) {
+        if (text && text !== '等待庭审发言...') {
           setLegalHint(text)
           setCountermeasure(laws.length > 0 ? '参考：' + laws.join(' · ') : '暂无应对建议…')
         }
       } catch {
-        // ignore polling errors
+        // ignore
       }
     }
     poll()
-    const id = setInterval(poll, 1500)
+    const id = setInterval(poll, 3000)
     return () => clearInterval(id)
-  }, [transcript])
+  }, [])
 
   const toggle = async () => {
     const next = !running

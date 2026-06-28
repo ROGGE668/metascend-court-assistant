@@ -1,6 +1,6 @@
 # Metascend 庭审助手 —— 全 Rust 后端技术规范
 
-> 状态：Phase 1 已完成；Phase 2 进行中（已移除 Python sidecar，Rust 接管数据层，并接入真实庭审录音与本地 Whisper ASR 接口）
+> 状态：Phase 1-2 已完成；Phase 3 已完成（VAD、说话人分离、自动转写流水线已 Rust 化，前端事件驱动）
 
 ## 1. 目标与原则
 
@@ -53,6 +53,9 @@ flowchart TB
 | `ai_stub` | `frontend/src-tauri/src/ai_stub.rs` | 庭审控制、状态、校准与聊天命令，当前已接入真实录音/ASR 能力 |
 | `audio` | `frontend/src-tauri/src/audio.rs` | 麦克风采集、实时录音缓冲、WAV 落盘 |
 | `asr` | `frontend/src-tauri/src/asr.rs` | 本地 Whisper ASR 加载、重采样与转写 |
+| `vad` | `frontend/src-tauri/src/vad.rs` | 语音活动检测（能量阈值 + 自适应） |
+| `diarization` | `frontend/src-tauri/src/diarization.rs` | 说话人分离（MFCC 嵌入 + 余弦相似度） |
+| `pipeline` | `frontend/src-tauri/src/pipeline.rs` | 自动庭审转写流水线（mic→VAD→ASR→diarization→事件推送） |
 | `lib.rs` | `frontend/src-tauri/src/lib.rs` | Tauri 命令注册、状态管理、生命周期 |
 
 ## 5. AI 功能迁移路线图
@@ -62,8 +65,8 @@ flowchart TB
 | 阶段 | 目标 | 候选 Rust 方案 |
 |---|---|---|
 | Phase A | Rust 接管数据 API；AI 命令 stub | — |
-| Phase B | 音频采集 + 转写入口 | `cpal` + `whisper-rs`（已完成接入） |
-| Phase C | 说话人分离 / VAD / 录音增强 | `pyannote-rs` / ONNX / 后续优化 |
+| Phase B | 音频采集 + 转写入口 | 已完成：`cpal` + `whisper-rs` |
+| Phase C | 说话人分离 / VAD / 录音增强 | 已完成：`vad.rs`（能量 VAD）+ `diarization.rs`（MFCC 嵌入）+ `pipeline.rs`（自动流水线） |
 | Phase D | 法律策略 / RAG | `ort` + 本地 embedding + 规则引擎 |
 | Phase E | TTS | `piper-rs` / `ort` |
 
@@ -93,7 +96,13 @@ flowchart TB
 - 已删除应用运行链路中的 Python sidecar 依赖。
 - 已新增 Rust 麦克风录音、WAV 持久化、本地 Whisper ASR 接口。
 - 前端庭审辅助页已接入真实录音控制、ASR 加载与转写触发。
-- 后续仍需继续优化说话人分离、法律策略推理、录音 VAD 与 UI 细节。
+- **Phase 3 已完成**：
+  - `vad.rs`：基于帧能量的自适应 VAD，自动检测语音段起止。
+  - `diarization.rs`：MFCC 特征提取 + 余弦相似度的轻量说话人识别，支持校准录制。
+  - `pipeline.rs`：自动转写流水线，mic→VAD→ASR→diarization→Tauri Event 实时推送。
+  - `ai_stub.rs`：`calibrate_role` 接入真实声纹录制与嵌入存储。
+  - 前端 `WorkPage.tsx`：通过 `listen('transcript:new')` 事件驱动接收实时转写，不再依赖轮询。
+- 后续仍需优化法律策略推理、TTS、以及用更精确的 speaker embedding 替换 MFCC 方案。
 
 ## 10. 风险与例外
 

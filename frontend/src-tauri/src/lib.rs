@@ -1,20 +1,24 @@
-
 mod cases;
+mod diarization;
 mod evidence;
 mod knowledge;
+mod llm;
+mod pipeline;
 mod store;
 mod ai_stub;
 mod asr;
 mod audio;
-mod llm;
+mod vad;
 
 use serde_json::Value;
 use std::sync::Arc;
 use tauri::{Manager, State};
 
 use cases::CaseStore;
+use diarization::DiarizationEngine;
 use evidence::EvidenceStore;
 use knowledge::KnowledgeStore;
+use pipeline::CourtroomPipeline;
 use store::SettingsStore;
 
 pub struct AppState {
@@ -25,13 +29,9 @@ pub struct AppState {
     pub llm: Arc<std::sync::Mutex<Option<llm::LlmEngine>>>,
     pub mic: Arc<audio::MicRecorder>,
     pub asr: Arc<asr::AsrEngine>,
+    pub pipeline: Arc<CourtroomPipeline>,
     pub data_dir: std::path::PathBuf,
 }
-
-
-
-
-
 
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
@@ -44,7 +44,11 @@ async fn list_cases(state: State<'_, AppState>) -> Result<Value, String> {
 }
 
 #[tauri::command]
-async fn create_case(title: String, case_type: String, state: State<'_, AppState>) -> Result<Value, String> {
+async fn create_case(
+    title: String,
+    case_type: String,
+    state: State<'_, AppState>,
+) -> Result<Value, String> {
     state.case_store.create_case(title, case_type).await
 }
 
@@ -98,8 +102,15 @@ async fn list_documents(state: State<'_, AppState>) -> Result<Value, String> {
 }
 
 #[tauri::command]
-async fn import_knowledge_document(source_path: String, category: String, state: State<'_, AppState>) -> Result<Value, String> {
-    let doc = state.knowledge_store.import_file(source_path, category).await?;
+async fn import_knowledge_document(
+    source_path: String,
+    category: String,
+    state: State<'_, AppState>,
+) -> Result<Value, String> {
+    let doc = state
+        .knowledge_store
+        .import_file(source_path, category)
+        .await?;
     Ok(serde_json::json!({
         "id": doc.id,
         "name": doc.name,
@@ -155,7 +166,10 @@ async fn get_recording_files(state: State<'_, AppState>) -> Result<Value, String
 
 #[tauri::command]
 async fn load_asr_model(model_path: String, state: State<'_, AppState>) -> Result<Value, String> {
-    state.asr.ensure_ready(std::path::PathBuf::from(model_path)).await?;
+    state
+        .asr
+        .ensure_ready(std::path::PathBuf::from(model_path))
+        .await?;
     Ok(state.asr.snapshot().await)
 }
 
@@ -165,13 +179,19 @@ async fn get_asr_status(state: State<'_, AppState>) -> Result<Value, String> {
 }
 
 #[tauri::command]
-async fn transcribe_recording(language: Option<String>, state: State<'_, AppState>) -> Result<Value, String> {
+async fn transcribe_recording(
+    language: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Value, String> {
     let (samples, sample_rate, _channels) = state.mic.take_segment().await;
     if samples.is_empty() {
         return Err("当前录音缓冲为空，请先开始庭审并录入语音".into());
     }
     let sample_rate = sample_rate.unwrap_or(16000);
-    let result = state.asr.transcribe(&samples, sample_rate, language.as_deref()).await?;
+    let result = state
+        .asr
+        .transcribe(&samples, sample_rate, language.as_deref())
+        .await?;
     Ok(result)
 }
 
@@ -221,9 +241,15 @@ pub fn run() {
             let app_data_dir = app.path().app_data_dir()?;
             let data_dir = app_data_dir.clone();
 
-            let settings_store = Arc::new(tauri::async_runtime::block_on(SettingsStore::new(data_dir.clone())));
-            let case_store = Arc::new(tauri::async_runtime::block_on(CaseStore::new(data_dir.clone())));
-            let evidence_store = Arc::new(tauri::async_runtime::block_on(EvidenceStore::new(data_dir.clone())));
+            let settings_store = Arc::new(tauri::async_runtime::block_on(
+                SettingsStore::new(data_dir.clone()),
+            ));
+            let case_store = Arc::new(tauri::async_runtime::block_on(
+                CaseStore::new(data_dir.clone()),
+            ));
+            let evidence_store = Arc::new(tauri::async_runtime::block_on(
+                EvidenceStore::new(data_dir.clone()),
+            ));
 
             let knowledge_base_dir = if cfg!(debug_assertions) {
                 let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
@@ -236,12 +262,16 @@ pub fn run() {
             } else {
                 data_dir.join("knowledge_base")
             };
-            let knowledge_store = Arc::new(tauri::async_runtime::block_on(KnowledgeStore::new(knowledge_base_dir)));
+            let knowledge_store = Arc::new(tauri::async_runtime::block_on(
+                KnowledgeStore::new(knowledge_base_dir),
+            ));
             let llm = Arc::new(std::sync::Mutex::new(None));
-            let mic = Arc::new(audio::MicRecorder::new().with_output_dir(data_dir.join("recordings")));
+            let mic = Arc::new(
+                audio::MicRecorder::new().with_output_dir(data_dir.join("recordings")),
+            );
             let asr = Arc::new(asr::AsrEngine::new());
-
-            // No Python sidecar: all APIs are now Rust-native.
+            let diarization = Arc::new(DiarizationEngine::new());
+            let pipeline = CourtroomPipeline::new(mic.clone(), asr.clone(), diarization);
 
             app.manage(AppState {
                 settings_store,
@@ -251,6 +281,7 @@ pub fn run() {
                 llm,
                 mic,
                 asr,
+                pipeline,
                 data_dir,
             });
             Ok(())
@@ -271,6 +302,8 @@ pub fn run() {
             ai_stub::get_transcript,
             ai_stub::get_suggestion,
             ai_stub::calibrate_role,
+            ai_stub::get_pipeline_status,
+            ai_stub::clear_transcripts,
             list_cases,
             create_case,
             get_case,
