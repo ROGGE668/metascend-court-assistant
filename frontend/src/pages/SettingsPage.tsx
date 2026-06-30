@@ -30,7 +30,7 @@ export default function SettingsPage({ healthLog }: { healthLog?: string[] }) {
   const [sub, setSub] = useState<'general' | 'audio'>('general')
   const [toggles, setToggles] = useState<Record<string, boolean>>({})
   const [settings, setSettings] = useState<Record<string, unknown>>({})
-  const [rustLlmModel, setRustLlmModel] = useState('Qwen/Qwen2.5-0.5B-Instruct')
+  const [rustLlmModel, setRustLlmModel] = useState('Qwen/Qwen3-0.6B-GGUF')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -49,7 +49,7 @@ export default function SettingsPage({ healthLog }: { healthLog?: string[] }) {
         const backendToggles = (res.toggles as Record<string, boolean>) || {}
         setToggles(prev => ({ ...prev, ...backendToggles }))
         setSettings(res)
-        setRustLlmModel((res.rust_llm_model as string) || 'Qwen/Qwen2.5-0.5B-Instruct')
+        setRustLlmModel((res.rust_llm_model as string) || 'Qwen/Qwen3-0.6B-GGUF')
         setError('')
       } catch (e) {
         setError('加载设置失败：' + String(e))
@@ -139,7 +139,7 @@ export default function SettingsPage({ healthLog }: { healthLog?: string[] }) {
               type="text"
               value={rustLlmModel}
               onChange={e => setRustLlmModel(e.target.value)}
-              placeholder="Qwen/Qwen2.5-0.5B-Instruct"
+              placeholder="Qwen/Qwen3-0.6B-GGUF"
               className={inputClass}
             />
             <p className="mt-1.5 text-xs text-[#6e6e73]">
