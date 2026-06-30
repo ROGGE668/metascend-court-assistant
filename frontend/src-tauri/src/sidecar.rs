@@ -188,9 +188,25 @@ impl SidecarManager {
 
     async fn spawn_python(port: u16, env_overrides: &Mutex<HashMap<String, String>>) -> Result<(u32, ChildStdout, ChildStderr), String> {
         let root = project_root();
-        let uv = resolve_uv_binary()?;
-        let mut cmd = Command::new(&uv);
-        cmd.args(["run", "python", "-m", "src.api_server"])
+        let script = root.join("scripts").join("mlx_server.py");
+        if !script.exists() {
+            return Err(format!("MLX server script not found: {}", script.display()));
+        }
+
+        // 优先使用 .venv 中的 python，否则用系统 python3
+        let python = {
+            let venv_python = root.join(".venv").join("bin").join("python3");
+            if venv_python.exists() {
+                venv_python.to_string_lossy().to_string()
+            } else {
+                resolve_python_binary()?
+            }
+        };
+
+        log_info(&format!("Spawning MLX server: {} {} (port {})", python, script.display(), port));
+
+        let mut cmd = Command::new(&python);
+        cmd.arg(&script)
             .current_dir(&root)
             .env("METASCEND_PORT", port.to_string())
             .stdout(std::process::Stdio::piped())
@@ -203,7 +219,7 @@ impl SidecarManager {
             }
         }
         let mut child = cmd.spawn()
-            .map_err(|e| format!("Failed to spawn backend: {}", e))?;
+            .map_err(|e| format!("Failed to spawn MLX server: {}", e))?;
 
         let pid = child.id().ok_or("Failed to get child PID")?;
         let stdout = child.stdout.take().ok_or("Failed to take stdout")?;
@@ -337,7 +353,31 @@ fn send_signal(pid: i32, signal: nix::sys::signal::Signal) -> Result<(), String>
     }
 }
 
-fn resolve_uv_binary() -> Result<String, String> {
+fn resolve_python_binary() -> Result<String, String> {
+    if let Ok(path) = std::env::var("PYTHON3_PATH") {
+        if std::path::Path::new(&path).exists() {
+            return Ok(path);
+        }
+    }
+    let candidates = ["python3", "/opt/homebrew/bin/python3", "/usr/bin/python3", "/usr/local/bin/python3"];
+    for candidate in &candidates {
+        if std::process::Command::new(candidate)
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+        {
+            return Ok(candidate.to_string());
+        }
+    }
+    Err("python3 not found. Install Python 3 or set PYTHON3_PATH.".to_string())
+}
+
+fn log_info(msg: &str) {
+    eprintln!("[SidecarManager] {}", msg);
+}
+
+fn _resolve_uv_binary() -> Result<String, String> {
     // Allow explicit override for testing or bundling.
     if let Ok(path) = std::env::var("UV_PATH") {
         if std::path::Path::new(&path).exists() {
@@ -379,7 +419,7 @@ pub fn project_root() -> PathBuf {
     if let Ok(exe) = std::env::current_exe() {
         let mut dir = exe.parent();
         while let Some(d) = dir {
-            if d.join("pyproject.toml").exists() || d.join("src").join("api_server.py").exists() {
+            if d.join("scripts").join("mlx_server.py").exists() || d.join("pyproject.toml").exists() {
                 return d.to_path_buf();
             }
             dir = d.parent();
@@ -399,7 +439,7 @@ mod tests {
     fn project_root_returns_valid_path() {
         let root = project_root();
         assert!(
-            root.join("pyproject.toml").exists() || root.join("src").join("api_server.py").exists(),
+            root.join("scripts").join("mlx_server.py").exists() || root.join("pyproject.toml").exists(),
             "project_root should point to the repository root: {:?}",
             root
         );

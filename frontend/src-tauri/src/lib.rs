@@ -11,6 +11,7 @@ mod audio;
 mod vad;
 mod chat;
 mod strategy;
+mod sidecar;
 
 use serde_json::Value;
 use std::sync::Arc;
@@ -24,6 +25,7 @@ use pipeline::CourtroomPipeline;
 use store::SettingsStore;
 use chat::ChatStore;
 use strategy::StrategyEngine;
+use sidecar::SidecarManager;
 
 pub struct AppState {
     pub settings_store: Arc<SettingsStore>,
@@ -36,6 +38,7 @@ pub struct AppState {
     pub pipeline: Arc<CourtroomPipeline>,
     pub chat_store: Arc<ChatStore>,
     pub strategy_engine: Arc<tokio::sync::RwLock<StrategyEngine>>,
+    pub mlx_sidecar: Arc<SidecarManager>,
     pub data_dir: std::path::PathBuf,
 }
 
@@ -302,6 +305,34 @@ pub fn run() {
                 tauri::async_runtime::block_on(StrategyEngine::new(template_path))
             ));
 
+            // MLX sidecar 管理器
+            let mlx_log_path = data_dir.join("logs").join("mlx_sidecar.log");
+            std::fs::create_dir_all(mlx_log_path.parent().unwrap_or(&data_dir))
+                .expect("create log dir");
+            let mlx_sidecar = SidecarManager::new(8727, mlx_log_path);
+
+            // 启动 MLX sidecar（后台异步，不阻塞 UI 加载）
+            {
+                let sidecar = mlx_sidecar.clone();
+                let llm_ref = llm.clone();
+                tauri::async_runtime::spawn(async move {
+                    match SidecarManager::start(sidecar.clone()).await {
+                        Ok(()) => {
+                            let url = sidecar.clone().backend_url().await;
+                            eprintln!("[MLX] Sidecar ready at {}", url);
+                            // 创建 LLM 引擎指向 sidecar URL
+                            if let Ok(engine) = llm::LlmEngine::with_url(url) {
+                                let mut guard = llm_ref.lock().unwrap_or_else(|e| e.into_inner());
+                                *guard = Some(engine);
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("[MLX] Sidecar start failed: {}", e);
+                        }
+                    }
+                });
+            }
+
             app.manage(AppState {
                 settings_store,
                 case_store,
@@ -313,6 +344,7 @@ pub fn run() {
                 pipeline,
                 chat_store,
                 strategy_engine,
+                mlx_sidecar,
                 data_dir,
             });
             Ok(())
